@@ -1,0 +1,15 @@
+.env
+.env.*
+*.log
+logs/
+node_modules/
+dist/
+build/
+target/
+.cache/
+temp/
+tmp/
+credentials*
+secrets*
+tokens*
+.agents/mcp_config.json
