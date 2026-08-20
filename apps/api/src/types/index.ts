@@ -3,6 +3,8 @@ export type Bindings = {
   GITHUB_OWNER: string;
   GITHUB_RELEASES_REPO: string;
   GITHUB_TOKEN?: string;
+  CLOUDFLARE_ACCESS_TEAM_DOMAIN: string;
+  CLOUDFLARE_ACCESS_AUD: string;
 };
 
 export type Release = {

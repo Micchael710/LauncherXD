@@ -69,9 +69,16 @@ app.get('/health/github', async (c) => {
   }
 })
 
-// Módulos
+import adminApp from './routes/admin'
+import { adminAuth } from './middleware/admin-auth'
+
+// Módulos públicos
 app.route('/api/releases', releasesApp)
 app.route('/api/news', newsApp)
 app.route('/api/settings', settingsApp)
+
+// Módulos protegidos administrativamente
+app.use('/api/admin/*', adminAuth())
+app.route('/api/admin', adminApp)
 
 export default app

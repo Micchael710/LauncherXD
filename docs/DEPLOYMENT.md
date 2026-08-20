@@ -36,3 +36,8 @@ npx wrangler d1 execute launcherxd-db --local --file migrations/0001_initial_sch
 npx wrangler d1 execute launcherxd-db --local --file seeds/local.sql
 ```
 **Warning**: Never run `seeds/local.sql` remotely.
+
+### Cloudflare Access Variables
+For administrative endpoints, configure the following `vars` in `wrangler.jsonc`:
+- `CLOUDFLARE_ACCESS_TEAM_DOMAIN`: e.g. `your-team.cloudflareaccess.com`
+- `CLOUDFLARE_ACCESS_AUD`: Audience Tag from your application.

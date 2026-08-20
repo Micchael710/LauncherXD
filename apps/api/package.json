@@ -1,19 +1,21 @@
 {
-  "name": "launcherxd-api",
-  "version": "1.0.0",
-  "description": "Minecraft Launcher Backend API",
-  "main": "src/index.ts",
-  "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
-  },
-  "dependencies": {
-    "hono": "^4.6.1"
-  },
-  "devDependencies": {
-    "@cloudflare/workers-types": "^4.20240815.0",
-    "typescript": "^5.5.4",
-    "vitest": "^4.1.11",
-    "wrangler": "^3.72.0"
-  }
+    "name":  "launcherxd-api",
+    "version":  "1.0.0",
+    "description":  "Minecraft Launcher Backend API",
+    "main":  "src/index.ts",
+    "scripts":  {
+                    "dev":  "wrangler dev",
+                    "deploy":  "wrangler deploy",
+                    "test":  "vitest run"
+                },
+    "dependencies":  {
+                         "hono":  "^4.6.1",
+                         "jose":  "^6.2.9"
+                     },
+    "devDependencies":  {
+                            "@cloudflare/workers-types":  "^4.20240815.0",
+                            "typescript":  "^5.5.4",
+                            "vitest":  "^4.1.11",
+                            "wrangler":  "^3.72.0"
+                        }
 }

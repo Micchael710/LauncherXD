@@ -38,3 +38,8 @@ Existe un launcher anterior (`Orion-Launcher-electron-main`) que funcionó corre
 2. **Reutilizar o Adaptar**: Si la implementación sigue buenas prácticas, es segura, eficiente, está bien estructurada y sigue siendo apropiada, se debe reutilizar o adaptar.
 3. **Mejorar**: Si la implementación antigua es defectuosa, se debe crear una nueva y mejor solución. NO copiar automáticamente código sólo porque funcionó.
 4. **Prohibido importar**: Secretos, tokens, credenciales o configuraciones de Firebase innecesarias.
+
+## Seguridad Administrativa
+- Cloudflare Access es el proveedor de identidad principal para las rutas `/api/admin/*`.
+- No hay contrase�as internas ni tokens est�ticos fijos expuestos a clientes.
+- Todo token en `Cf-Access-Jwt-Assertion` es validado con `jose` contra el JWKS de Cloudflare, operando en modelo *fail-closed* si el proveedor no est� disponible.
