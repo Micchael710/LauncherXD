@@ -24,11 +24,27 @@ export function isSafePath(path: string | undefined | null): boolean {
   // Reject NUL and control characters
   if (/[\x00-\x1F\x7F]/.test(path)) return false;
 
+  // Reject alternate data streams
+  if (path.includes(':')) return false;
+
+  const reservedNames = new Set([
+    'con', 'prn', 'aux', 'nul',
+    'com1', 'com2', 'com3', 'com4', 'com5', 'com6', 'com7', 'com8', 'com9',
+    'lpt1', 'lpt2', 'lpt3', 'lpt4', 'lpt5', 'lpt6', 'lpt7', 'lpt8', 'lpt9'
+  ]);
+
   // Reject directory traversal segments
   const segments = path.split('/');
   for (const segment of segments) {
     if (segment === '.' || segment === '..') return false;
     if (segment.trim() === '') return false; // Prevents double slashes like a//b
+
+    // Reject trailing dot or space
+    if (segment.endsWith(' ') || segment.endsWith('.')) return false;
+
+    // Windows reserved names
+    const basename = segment.split('.')[0].toLowerCase();
+    if (reservedNames.has(basename)) return false;
   }
 
   return true;
@@ -48,9 +64,14 @@ export function isValidNewsUrl(url: string | undefined | null): boolean {
 export function isSafeSettingKey(key: string | undefined | null): boolean {
   if (!key || key.trim() === '') return false;
 
+  const normalized = key.toLowerCase();
+
+  if (normalized.startsWith('cloudflare_access_') || normalized.startsWith('github_')) {
+    return false;
+  }
+
   // Reject keys associated with secrets or critical config
   const blacklist = ['github_token', 'token', 'password', 'secret', 'jwt', 'bearer', 'authorization', 'api_key', 'private_key', 'credential'];
-  const normalized = key.toLowerCase();
 
   for (const bad of blacklist) {
     if (normalized.includes(bad)) return false;
@@ -59,37 +80,81 @@ export function isSafeSettingKey(key: string | undefined | null): boolean {
   return true;
 }
 
+export interface ValidationErrorDetail {
+  code: string;
+  path?: string;
+  message?: string;
+}
+
+export class ValidationError extends Error {
+  details: ValidationErrorDetail[];
+  constructor(details: ValidationErrorDetail[]) {
+    super('Validation Error');
+    this.name = 'ValidationError';
+    this.details = details;
+  }
+}
+
 // Validates individual files (used during edits)
 export function validateIndividualFileConsistency(file: any): void {
+  const issues: ValidationErrorDetail[] = [];
+
   if (file.operation === 'add' || file.operation === 'replace') {
     if (!isValidSha256(file.sha256)) {
-      throw new Error(`Invalid sha256 format for file: ${file.path}`);
+      issues.push({ code: 'invalid_sha256', path: file.path });
     }
   }
 
   if (file.part_index !== null && file.part_index !== undefined) {
     if (file.part_count === null || file.part_count === undefined) {
-      throw new Error(`part_count must be defined if part_index is defined (file: ${file.path})`);
+      issues.push({ code: 'missing_part_count', path: file.path });
+    } else {
+      if (file.part_index < 1) issues.push({ code: 'invalid_part_index', path: file.path });
+      if (file.part_count < 1) issues.push({ code: 'invalid_part_count', path: file.path });
+      if (file.part_index > file.part_count) issues.push({ code: 'part_index_exceeds_count', path: file.path });
     }
 
     if (file.final_sha256 && !isValidSha256(file.final_sha256)) {
-      throw new Error(`Invalid final_sha256 format for multipart file: ${file.path}`);
+      issues.push({ code: 'invalid_final_sha256', path: file.path });
     }
+  }
 
-    if (file.part_index < 1) throw new Error(`part_index must be >= 1`);
-    if (file.part_count < 1) throw new Error(`part_count must be >= 1`);
-    if (file.part_index > file.part_count) throw new Error(`part_index cannot be greater than part_count`);
+  if (!isSafePath(file.path)) {
+    issues.push({ code: 'invalid_path', path: file.path });
+  }
+
+  if (!isSafePath(file.logical_path)) {
+    issues.push({ code: 'invalid_logical_path', path: file.path });
+  }
+
+  if (issues.length > 0) {
+    throw new ValidationError(issues);
   }
 }
 
 // Validates that the entire release is ready to publish (used by the validation endpoint)
-export function validateReleaseFilesConsistency(files: any[]): void {
+export function validateReleaseReady(release: any, files: any[]): ValidationErrorDetail[] {
+  const issues: ValidationErrorDetail[] = [];
+
+  if (!isValidSemVer(release.version)) issues.push({ code: 'invalid_version' });
+  if (release.channel !== 'stable' && release.channel !== 'beta') issues.push({ code: 'invalid_channel' });
+  if (release.release_type !== 'launcher' && release.release_type !== 'modpack') issues.push({ code: 'invalid_release_type' });
+  if (release.total_size !== null && release.total_size < 0) issues.push({ code: 'invalid_total_size' });
+
   const multipartGroups = new Map<string, { partCount: number, finalSha256: string | undefined, indices: Set<number> }>();
 
   for (const file of files) {
-    validateIndividualFileConsistency(file);
+    try {
+      validateIndividualFileConsistency(file);
+    } catch (err: any) {
+      if (err instanceof ValidationError) {
+        issues.push(...err.details);
+      } else {
+        issues.push({ code: 'file_consistency_error', path: file.path });
+      }
+    }
 
-    if (file.part_index !== null && file.part_index !== undefined) {
+    if (file.part_index !== null && file.part_index !== undefined && file.part_count !== null && file.part_count !== undefined) {
       const groupKey = file.logical_path;
       if (!multipartGroups.has(groupKey)) {
         multipartGroups.set(groupKey, {
@@ -101,15 +166,15 @@ export function validateReleaseFilesConsistency(files: any[]): void {
         const group = multipartGroups.get(groupKey)!;
 
         if (group.partCount !== file.part_count) {
-          throw new Error(`Inconsistent part_count in multipart group: ${groupKey}`);
+          issues.push({ code: 'inconsistent_part_count', path: file.path });
         }
 
         if (group.finalSha256 !== file.final_sha256) {
-          throw new Error(`Inconsistent final_sha256 in multipart group: ${groupKey}`);
+          issues.push({ code: 'inconsistent_final_sha256', path: file.path });
         }
 
         if (group.indices.has(file.part_index)) {
-          throw new Error(`Duplicate part_index ${file.part_index} in multipart group: ${groupKey}`);
+          issues.push({ code: 'duplicate_part_index', path: file.path });
         }
 
         group.indices.add(file.part_index);
@@ -117,16 +182,17 @@ export function validateReleaseFilesConsistency(files: any[]): void {
     }
   }
 
-  // Validate that no parts are missing or out of bounds (only required for readiness)
   for (const [groupKey, group] of multipartGroups.entries()) {
     if (group.indices.size !== group.partCount) {
-      throw new Error(`Missing parts in multipart group: ${groupKey}. Expected ${group.partCount} but got ${group.indices.size}`);
+      issues.push({ code: 'multipart_missing_part', path: groupKey });
     }
 
     for (let i = 1; i <= group.partCount; i++) {
       if (!group.indices.has(i)) {
-        throw new Error(`Missing part_index ${i} in multipart group: ${groupKey}`);
+        issues.push({ code: 'multipart_missing_part_index', path: groupKey, message: i.toString() });
       }
     }
   }
+
+  return issues;
 }

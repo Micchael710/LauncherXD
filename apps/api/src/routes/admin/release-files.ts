@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { Bindings, CreateReleaseFileInput, UpdateReleaseFileInput } from '../../types';
 import { ReleaseRepository } from '../../repositories/release-repository';
-import { isSafePath, isValidSha256 } from '../../utils/validation';
+import { isSafePath, isValidSha256, validateIndividualFileConsistency } from '../../utils/validation';
 import { AdminAuditLogger } from '../../services/admin-audit-logger';
 import { AdminIdentity } from '../../auth/admin-auth-provider';
 
@@ -34,21 +34,30 @@ releaseFilesApp.post('/', async (c) => {
   try {
     body = await c.req.json();
   } catch {
-    return c.json({ error: 'validation_error', details: ['invalid_json'] }, 400);
-  }
-
-  if (!isSafePath(body.path)) return c.json({ error: 'validation_error', details: ['invalid_path'] }, 400);
-  if (!isSafePath(body.logical_path)) return c.json({ error: 'validation_error', details: ['invalid_logical_path'] }, 400);
-  if (!['add', 'replace', 'delete'].includes(body.operation)) return c.json({ error: 'validation_error', details: ['invalid_operation'] }, 400);
-  if (typeof body.size !== 'number' || body.size < 0) return c.json({ error: 'validation_error', details: ['invalid_size'] }, 400);
-
-  if ((body.operation === 'add' || body.operation === 'replace') && !isValidSha256(body.sha256)) {
-    return c.json({ error: 'validation_error', details: ['invalid_sha256'] }, 400);
+    return c.json({ error: 'validation_error', details: [{ code: 'invalid_json' }] }, 400);
   }
 
   // Derive filename from path server-side
-  const pathSegments = body.path.split('/');
+  const pathSegments = (body.path || '').split('/');
   const filename = pathSegments[pathSegments.length - 1];
+
+  const candidate = {
+    ...body,
+    filename,
+    operation: body.operation
+  };
+
+  try {
+    validateIndividualFileConsistency(candidate);
+  } catch (err: any) {
+    if (err.name === 'ValidationError') {
+      return c.json({ error: 'validation_error', details: err.details }, 400);
+    }
+    throw err;
+  }
+
+  if (!['add', 'replace', 'delete'].includes(body.operation)) return c.json({ error: 'validation_error', details: [{ code: 'invalid_operation' }] }, 400);
+  if (typeof body.size !== 'number' || body.size < 0) return c.json({ error: 'validation_error', details: [{ code: 'invalid_size' }] }, 400);
 
   const fileId = crypto.randomUUID();
   try {
@@ -88,43 +97,50 @@ releaseFilesApp.patch('/:fileId', async (c) => {
     return c.json({ error: 'conflict', details: ['release_not_draft'] }, 409);
   }
 
+  const currentFile = await repo.getReleaseFileById(fileId, releaseId);
+  if (!currentFile) return c.json({ error: 'not_found' }, 404);
+
   let body: UpdateReleaseFileInput;
   try {
     body = await c.req.json();
   } catch {
-    return c.json({ error: 'validation_error', details: ['invalid_json'] }, 400);
+    return c.json({ error: 'validation_error', details: [{ code: 'invalid_json' }] }, 400);
   }
 
-  const updates: any = {};
+  const candidate = {
+    ...currentFile,
+    ...body
+  };
 
   if (body.path !== undefined) {
-    if (!isSafePath(body.path)) return c.json({ error: 'validation_error', details: ['invalid_path'] }, 400);
-    updates.path = body.path;
-    const pathSegments = body.path.split('/');
-    updates.filename = pathSegments[pathSegments.length - 1];
+    const pathSegments = (body.path || '').split('/');
+    candidate.filename = pathSegments[pathSegments.length - 1];
   }
-  if (body.logical_path !== undefined) {
-    if (!isSafePath(body.logical_path)) return c.json({ error: 'validation_error', details: ['invalid_logical_path'] }, 400);
-    updates.logical_path = body.logical_path;
+
+  try {
+    validateIndividualFileConsistency(candidate);
+  } catch (err: any) {
+    if (err.name === 'ValidationError') {
+      return c.json({ error: 'validation_error', details: err.details }, 400);
+    }
+    throw err;
   }
-  if (body.operation !== undefined) {
-    if (!['add', 'replace', 'delete'].includes(body.operation)) return c.json({ error: 'validation_error', details: ['invalid_operation'] }, 400);
-    updates.operation = body.operation;
+
+  if (body.operation !== undefined && !['add', 'replace', 'delete'].includes(body.operation)) return c.json({ error: 'validation_error', details: [{ code: 'invalid_operation' }] }, 400);
+  if (body.size !== undefined && (typeof body.size !== 'number' || body.size < 0)) return c.json({ error: 'validation_error', details: [{ code: 'invalid_size' }] }, 400);
+
+  const updates: any = {};
+  if (body.path !== undefined) {
+    updates.path = candidate.path;
+    updates.filename = candidate.filename;
   }
-  if (body.size !== undefined) {
-    if (typeof body.size !== 'number' || body.size < 0) return c.json({ error: 'validation_error', details: ['invalid_size'] }, 400);
-    updates.size = body.size;
-  }
-  if (body.sha256 !== undefined) {
-    if (body.sha256 && !isValidSha256(body.sha256)) return c.json({ error: 'validation_error', details: ['invalid_sha256'] }, 400);
-    updates.sha256 = body.sha256;
-  }
-  if (body.part_index !== undefined) updates.part_index = body.part_index;
-  if (body.part_count !== undefined) updates.part_count = body.part_count;
-  if (body.final_sha256 !== undefined) {
-    if (body.final_sha256 && !isValidSha256(body.final_sha256)) return c.json({ error: 'validation_error', details: ['invalid_final_sha256'] }, 400);
-    updates.final_sha256 = body.final_sha256;
-  }
+  if (body.logical_path !== undefined) updates.logical_path = candidate.logical_path;
+  if (body.operation !== undefined) updates.operation = candidate.operation;
+  if (body.size !== undefined) updates.size = candidate.size;
+  if (body.sha256 !== undefined) updates.sha256 = candidate.sha256;
+  if (body.part_index !== undefined) updates.part_index = candidate.part_index;
+  if (body.part_count !== undefined) updates.part_count = candidate.part_count;
+  if (body.final_sha256 !== undefined) updates.final_sha256 = candidate.final_sha256;
 
   try {
     await repo.updateReleaseFile(fileId, releaseId, updates);
@@ -149,6 +165,9 @@ releaseFilesApp.delete('/:fileId', async (c) => {
   if (release.status !== 'draft') {
     return c.json({ error: 'conflict', details: ['release_not_draft'] }, 409);
   }
+
+  const currentFile = await repo.getReleaseFileById(fileId, releaseId);
+  if (!currentFile) return c.json({ error: 'not_found' }, 404);
 
   await repo.deleteReleaseFile(fileId, releaseId);
   AdminAuditLogger.logAction(c.get('adminIdentity'), 'release_files', fileId, 'delete', 'success', { release_id: releaseId });

@@ -1,5 +1,5 @@
 import { ReleaseRepository } from '../repositories/release-repository';
-import { validateReleaseFilesConsistency } from '../utils/validation';
+import { validateReleaseReady, ValidationError } from '../utils/validation';
 
 export class ReleaseService {
   constructor(private readonly repository: ReleaseRepository) {}
@@ -30,7 +30,10 @@ export class ReleaseService {
     if (!release) return null;
 
     const files = await this.repository.getReleaseFiles(release.id);
-    validateReleaseFilesConsistency(files);
+    const issues = validateReleaseReady(release, files);
+    if (issues.length > 0) {
+      throw new ValidationError(issues);
+    }
     
     return {
       version: release.version,

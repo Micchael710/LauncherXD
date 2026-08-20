@@ -95,4 +95,49 @@ describe('Admin Release Files CRUD', () => {
     });
     expect(res.status).toBe(201);
   });
+
+  it('should reject invalid multipart POST (missing part_count)', async () => {
+    mockD1.statement.first.mockResolvedValue({ id: '123', status: 'draft' });
+    const res = await request('POST', '/', {
+      path: 'mods/test.part1',
+      logical_path: 'mods/test.jar',
+      operation: 'add',
+      size: 100,
+      sha256: 'a'.repeat(64),
+      part_index: 1,
+      final_sha256: 'b'.repeat(64)
+    });
+    expect(res.status).toBe(400);
+    const body: any = await res.json();
+    expect(body.details[0].code).toBe('missing_part_count');
+  });
+
+  it('should reject PATCH that results in invalid multipart', async () => {
+    mockD1.statement.first.mockResolvedValueOnce({ id: '123', status: 'draft' });
+    mockD1.statement.first.mockResolvedValueOnce({ id: 'file1', release_id: '123', part_index: 1, part_count: 2, path: 'mods/a', logical_path: 'mods/a' });
+
+    const res = await request('PATCH', '/file1', {
+      part_index: 5
+    });
+    expect(res.status).toBe(400);
+    const body: any = await res.json();
+    expect(body.details[0].code).toBe('part_index_exceeds_count');
+  });
+
+  it('should reject PATCH on cross-release file', async () => {
+    mockD1.statement.first.mockResolvedValueOnce({ id: '123', status: 'draft' });
+    // mock getReleaseFileById returns null because it belongs to another release
+    mockD1.statement.first.mockResolvedValueOnce(null);
+
+    const res = await request('PATCH', '/file1', { size: 200 });
+    expect(res.status).toBe(404);
+  });
+
+  it('should reject DELETE on cross-release file', async () => {
+    mockD1.statement.first.mockResolvedValueOnce({ id: '123', status: 'draft' });
+    mockD1.statement.first.mockResolvedValueOnce(null);
+
+    const res = await request('DELETE', '/file1');
+    expect(res.status).toBe(404);
+  });
 });

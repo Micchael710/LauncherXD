@@ -24,6 +24,12 @@ export class ReleaseRepository {
     return results;
   }
 
+  async getReleaseFileById(fileId: string, releaseId: string): Promise<ReleaseFile | null> {
+    const stmt = this.db.prepare(`SELECT * FROM release_files WHERE id = ? AND release_id = ?`);
+    const file = await stmt.bind(fileId, releaseId).first<ReleaseFile>();
+    return file;
+  }
+
   constructor(private readonly db: D1Database) {}
 
   async getAllReleases(includeDrafts: boolean): Promise<Release[]> {
