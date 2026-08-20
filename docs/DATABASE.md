@@ -39,3 +39,6 @@ Configuraciones clave-valor públicas de la app.
 
 ## Índices
 Se han configurado índices en columnas de frecuente filtrado u ordenamiento, incluyendo `channel`, `release_type`, `status` y `published_at` para optimizar las consultas en los endpoints públicos.
+
+## Seguridad de Consultas
+Todas las consultas y escrituras a D1 deben utilizar obligatoriamente SQL parametrizado (prepare().bind()). La concatenaci�n directa en consultas est� estrictamente prohibida para prevenir inyecciones SQL.

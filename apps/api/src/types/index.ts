@@ -59,3 +59,63 @@ export type LauncherSetting = {
   is_public: boolean;
   updated_at: string;
 };
+
+export type CreateReleaseInput = {
+  version: string;
+  channel: string;
+  release_type: string;
+  total_size?: number;
+  release_notes?: string;
+};
+
+export type UpdateReleaseInput = {
+  version?: string;
+  channel?: string;
+  release_type?: string;
+  total_size?: number;
+  release_notes?: string;
+};
+
+export type CreateReleaseFileInput = {
+  path: string;
+  logical_path: string;
+  operation: string;
+  size: number;
+  sha256?: string;
+  part_index?: number;
+  part_count?: number;
+  final_sha256?: string;
+};
+
+export type UpdateReleaseFileInput = {
+  path?: string;
+  logical_path?: string;
+  operation?: string;
+  size?: number;
+  sha256?: string;
+  part_index?: number;
+  part_count?: number;
+  final_sha256?: string;
+};
+
+export type CreateNewsInput = {
+  title: string;
+  summary?: string;
+  image_url?: string;
+  target_url?: string;
+  published?: boolean;
+};
+
+export type UpdateNewsInput = {
+  title?: string;
+  summary?: string;
+  image_url?: string;
+  target_url?: string;
+  published?: boolean;
+};
+
+export type UpdateSettingInput = {
+  value: string;
+  value_type: string;
+  is_public?: boolean;
+};
