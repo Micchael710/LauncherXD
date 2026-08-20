@@ -13,3 +13,4 @@ credentials*
 secrets*
 tokens*
 .agents/mcp_config.json
+.wrangler/
