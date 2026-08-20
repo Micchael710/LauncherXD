@@ -1,10 +1,9 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-
-// Bindings for Cloudflare Worker
-type Bindings = {
-  DB: D1Database
-}
+import { releasesApp } from './routes/releases'
+import { newsApp } from './routes/news'
+import { settingsApp } from './routes/settings'
+import { Bindings } from './types'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -44,13 +43,9 @@ app.get('/health/db', async (c) => {
   }
 })
 
-// Rutas futuras preparadas en la arquitectura (NO IMPLEMENTADAS AÚN)
-// app.get('/api/releases', ...)
-// app.get('/api/releases/latest', ...)
-// app.get('/api/manifest', ...)
-// app.get('/api/news', ...)
-// app.get('/api/status', ...)
-// app.post('/api/auth', ...)
-// app.use('/api/admin/*', ...)
+// Módulos
+app.route('/api/releases', releasesApp)
+app.route('/api/news', newsApp)
+app.route('/api/settings', settingsApp)
 
 export default app

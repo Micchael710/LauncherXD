@@ -1,48 +1,39 @@
 # Arquitectura del Backend - LauncherXD
 
-## Estado Actual (Fase 1)
+## Estado Actual (Fase 2)
 La arquitectura está diseñada para separar claramente el backend (API) de los futuros frontends (Launcher desktop y Back Office web).
-Actualmente se ha implementado el Worker de Cloudflare y la conexión a la base de datos D1.
+En la Fase 2, se integró el esquema base en D1 utilizando migraciones estructuradas para soportar lanzamientos (releases), archivos, noticias y configuración pública. El proyecto está dividido lógicamente en Rutas, Servicios y Repositorios.
 
 ## Detalles Técnicos
-- **Ubicación del Worker**: `apps/api/` (Aislado del futuro frontend que irá en otras carpetas o en la raíz, dejando el Worker modular).
+- **Ubicación del Worker**: `apps/api/` (Aislado del futuro frontend).
 - **Nombre del Worker**: `launcherxd-api`
-- **Nombre lógico del binding DB**: `DB` (apunta a la base de datos física `launcherxd-db`)
+- **Binding DB**: `DB` (apunta a la base de datos `launcherxd-db`)
+- **Migraciones**: Los cambios en D1 se aplican a través de `apps/api/migrations/*.sql`
+- **Arquitectura Interna**: `Hono` Routes -> Services -> Repositories -> D1 Database
 
 ## Cómo Ejecutar Localmente
-Para probar la API de manera local simulando el entorno de Cloudflare:
 1. Abrir una terminal en `apps/api/`
-2. Instalar dependencias si no se ha hecho: `npm install`
-3. Iniciar el servidor de desarrollo: `npm run dev`
+2. Instalar dependencias: `npm install`
+3. Opcional: Cargar datos de prueba locales (seeds) ejecutando `npx wrangler d1 execute launcherxd-db --local --file apps/api/seeds/local.sql`. NUNCA se debe usar `--remote` con scripts de seeds.
+4. Iniciar el servidor de desarrollo: `npm run dev`
 
-## Cómo Probar los Endpoints
-El servidor local suele levantarse en `http://localhost:8787` (Wrangler lo indicará en la consola).
+## Estructura Modular
+El código fuente dentro de `apps/api/src/` está dividido en:
+- `routes/`: Define endpoints de HTTP y extrae variables/parámetros.
+- `services/`: Contiene la lógica de negocio, mapeos y validaciones.
+- `repositories/`: Interactúa de forma directa y única con D1 usando consultas seguras (prepared statements).
+- `types/`: Define interfaces tipadas.
 
-### Probar `/health`
-Verifica que el Worker funciona correctamente.
-```bash
-curl http://localhost:8787/health
-# Respuesta esperada: {"status":"ok","service":"launcherxd-api"}
-```
+## Qué NO se ha implementado todavía (Fase 2)
+- Frontend, interfaces visuales ni pantallas de login.
+- Endpoints administrativos (creación, subida y publicación).
+- Autenticación o roles de usuarios.
+- GitHub Releases y Downloader funcional.
+- Subida de archivos (sólo está preparado el modelo de base de datos para almacenar el manifiesto de dichos archivos).
 
-### Probar `/health/db`
-Verifica la conexión del Worker con la base de datos D1 mediante un query seguro (`SELECT 1 AS ok`).
-```bash
-curl http://localhost:8787/health/db
-# Respuesta esperada: {"status":"ok","database":"connected"}
-```
-
-## Cómo Desplegar
-Para desplegar el Worker a los servidores de producción de Cloudflare:
-1. Asegúrate de estar autenticado: `npx wrangler login` (desde la raíz o en `apps/api/`)
-2. Despliega la aplicación: `npm run deploy` (dentro de `apps/api/`)
-
-## Qué NO se ha implementado todavía
-Tal como dictan los objetivos de la Fase 1, las siguientes funcionalidades **NO** están implementadas y quedan para fases posteriores:
-- Frontend del launcher (interfaz de usuario, pantallas de login, visuales).
-- Aplicación web de Back Office o Dashboard.
-- Autenticación o esquemas de usuarios.
-- Endpoints definitivos (`/api/releases`, `/api/manifest`, `/api/news`, `/api/auth`, etc.).
-- Migraciones y tablas reales de D1 (usuarios, cuentas, skins, releases).
-- Sistema de Updater, Downloader o sincronización con GitHub Releases.
-- Configuraciones estrictas de CORS (ahora se permite `*` temporalmente, se debe ajustar cuando existan los dominios definitivos).
+## Regla de Referencia: Orion Launcher
+Existe un launcher anterior (`Orion-Launcher-electron-main`) que funcionó correctamente. Para futuras implementaciones (como downloader, updater, validación de hashes, progreso, instalación, etc.), se debe seguir esta regla:
+1. **Inspeccionar Orion primero**: Analizar cómo resolvieron el problema.
+2. **Reutilizar o Adaptar**: Si la implementación sigue buenas prácticas, es segura, eficiente, está bien estructurada y sigue siendo apropiada, se debe reutilizar o adaptar.
+3. **Mejorar**: Si la implementación antigua es defectuosa, se debe crear una nueva y mejor solución. NO copiar automáticamente código sólo porque funcionó.
+4. **Prohibido importar**: Secretos, tokens, credenciales o configuraciones de Firebase innecesarias.
