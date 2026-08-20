@@ -50,4 +50,17 @@ export function validateReleaseFilesConsistency(files: any[]): void {
       }
     }
   }
+
+  // Validate that no parts are missing or out of bounds
+  for (const [groupKey, group] of multipartGroups.entries()) {
+    if (group.indices.size !== group.partCount) {
+      throw new Error(`Missing parts in multipart group: ${groupKey}. Expected ${group.partCount} but got ${group.indices.size}`);
+    }
+
+    for (let i = 1; i <= group.partCount; i++) {
+      if (!group.indices.has(i)) {
+        throw new Error(`Missing part_index ${i} in multipart group: ${groupKey}`);
+      }
+    }
+  }
 }
