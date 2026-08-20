@@ -12,7 +12,7 @@ Cada release contiene una lista de archivos y su comportamiento (`add`, `replace
 
 Para la integridad técnica:
 - Todos los archivos cuentan con un **`sha256`** y **`size`**.
-- La base de datos D1 no almacena **ningún binario**. Guarda las reglas y las descargas se refieren (en versiones futuras) a URLs de GitHub Releases.
+- La base de datos D1 no almacena **ningún binario**. Guarda las reglas y las descargas se refieren a URLs alojadas en la infraestructura externa definida por el `ArtifactStorageProvider` (actualmente GitHub Releases).
 
 ## Archivos Divididos (Multipart)
 Dada la limitación posible de subida en algunas plataformas, el modelo permite definir fragmentos para archivos masivos.

@@ -1,5 +1,8 @@
 export type Bindings = {
   DB: D1Database;
+  GITHUB_OWNER: string;
+  GITHUB_RELEASES_REPO: string;
+  GITHUB_TOKEN?: string;
 };
 
 export type Release = {

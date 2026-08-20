@@ -4,6 +4,7 @@ import { releasesApp } from './routes/releases'
 import { newsApp } from './routes/news'
 import { settingsApp } from './routes/settings'
 import { Bindings } from './types'
+import { GitHubReleaseProvider } from './services/providers/github-release-provider'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -40,6 +41,31 @@ app.get('/health/db', async (c) => {
       database: 'disconnected',
       message: 'Failed to connect to the database'
     }, 500)
+  }
+})
+
+// Endpoint para comprobar conexión real a GitHub Releases
+app.get('/health/github', async (c) => {
+  try {
+    const provider = new GitHubReleaseProvider({
+      owner: c.env.GITHUB_OWNER,
+      repo: c.env.GITHUB_RELEASES_REPO,
+      token: c.env.GITHUB_TOKEN
+    });
+
+    const isConnected = await provider.checkConnection();
+    if (isConnected) {
+      return c.json({
+        status: 'ok',
+        github: 'connected'
+      });
+    }
+    throw new Error('github_unavailable');
+  } catch (err) {
+    return c.json({
+      status: 'error',
+      github: 'unavailable'
+    }, 500);
   }
 })
 

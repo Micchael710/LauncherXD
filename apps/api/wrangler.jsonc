@@ -12,5 +12,9 @@
   ],
   "observability": {
     "enabled": true
+  },
+  "vars": {
+    "GITHUB_OWNER": "Micchael710",
+    "GITHUB_RELEASES_REPO": "LauncherXD"
   }
 }
