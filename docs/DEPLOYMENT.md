@@ -1,43 +1,14 @@
-# Deployment Guide
+# Deployment
 
-This document describes how to deploy the LauncherXD API to Cloudflare Workers.
+## Cloudflare Worker
+Deploy the API via \
+px wrangler deploy\.
+Requires D1 bindings and the \GITHUB_TOKEN\ secret.
+\wrangler.jsonc\ must be configured to point \GITHUB_RELEASES_REPO\ to \LauncherXD-Releases\.
 
-## Prerequisites
-- Wrangler CLI (`npm install -g wrangler` or `npx wrangler`)
-- Cloudflare account with a D1 database instantiated.
+## Back Office
+The Back Office is **NOT deployed** to any cloud host.
+It is an exclusively local application. The UI runs on \localhost\, communicating with a local backend server that holds upload credentials securely.
 
-## Configuration
-The `wrangler.jsonc` file configures the Worker.
-- `name`: `launcherxd-api`
-- `d1_databases`: The binding `DB` connected to the actual remote D1 ID.
-- `vars`: Contains non-secret config like `GITHUB_OWNER` and `GITHUB_RELEASES_REPO`.
-
-### Secrets
-Certain variables must NOT be placed in `wrangler.jsonc` because they are highly sensitive.
-To configure `GITHUB_TOKEN`, run:
-```bash
-npx wrangler secret put GITHUB_TOKEN
-```
-Provide the secret in the secure prompt. It will be encrypted by Cloudflare.
-
-## Deployment Steps
-1. Navigate to the API folder: `cd apps/api`
-2. Run deployment: `npx wrangler deploy`
-3. Verify remote database migrations (if required): `npx wrangler d1 migrations apply launcherxd-db --remote`
-
-## Local Development
-For testing locally:
-```bash
-npm run dev
-```
-To run local D1 migrations and seeds:
-```bash
-npx wrangler d1 execute launcherxd-db --local --file migrations/0001_initial_schema.sql
-npx wrangler d1 execute launcherxd-db --local --file seeds/local.sql
-```
-**Warning**: Never run `seeds/local.sql` remotely.
-
-### Cloudflare Access Variables
-For administrative endpoints, configure the following `vars` in `wrangler.jsonc`:
-- `CLOUDFLARE_ACCESS_TEAM_DOMAIN`: e.g. `your-team.cloudflareaccess.com`
-- `CLOUDFLARE_ACCESS_AUD`: Audience Tag from your application.
+## Launcher Client
+Will be built and distributed separately, querying the Worker for updates and downloading assets directly from the GitHub Releases of \LauncherXD-Releases\.

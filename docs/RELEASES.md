@@ -1,26 +1,17 @@
-# Modelo de Releases - LauncherXD
+# Release Management Lifecycle
 
-## Conceptos Core
-Una **Release** es una versión puntual de un componente del ecosistema de LauncherXD (un `launcher` o un `modpack`), en un canal específico (`stable` o `beta`).
+Releases go through strict phases controlled by D1 and Cloudflare Workers.
 
-Las releases operan en dos fases:
-1. **Draft**: Etapa de pruebas/preparación. No es visible públicamente en la API.
-2. **Published**: Visible, verificable y con archivos adjuntos validados.
+## Local Back Office
+Administration is performed via a **local-only** Back Office.
+- UI runs on \localhost\.
+- A Local Backend handles direct uploads of large files to GitHub API.
+- The browser never receives GitHub secrets.
 
-## Archivos y Manifiestos
-Cada release contiene una lista de archivos y su comportamiento (`add`, `replace`, `delete`). Esto permite que el cliente calcule la diferencia estructural requerida al momento de actualizar y descargue sólo lo necesario.
+## Worker Responsibilities
+The Worker acts as the single source of truth for metadata (D1) and manifest orchestration.
+1. \prepare\: Creates draft in GitHub (\LauncherXD-Releases\) and assigns \github_tag\.
+2. \status\: Reconciles actual GitHub uploaded assets against D1 expectations (matching physical path SHA-256 expected names, exact sizes, and strict lowercase 64-hex SHA-256 digests).
+3. \publish\: Re-verifies status, syncs URLs, deterministically sorts files, builds and uploads \launcherxd-manifest.json\, and finally marks the GitHub Release as published (draft=false, make_latest=false).
 
-Para la integridad técnica:
-- Todos los archivos cuentan con un **`sha256`** y **`size`**.
-- La base de datos D1 no almacena **ningún binario**. Guarda las reglas y las descargas se refieren a URLs alojadas en la infraestructura externa definida por el `ArtifactStorageProvider` (actualmente GitHub Releases).
-
-## Archivos Divididos (Multipart)
-Dada la limitación posible de subida en algunas plataformas, el modelo permite definir fragmentos para archivos masivos.
-- Cada archivo dividido tiene un **`logical_path`** que identifica el archivo final en el que se reconstruirá (por ejemplo, `minecraft.zip`), lo que permite agrupar las partes de manera inequívoca.
-- Cada sub-archivo registra su `part_index` y `part_count`.
-- Contiene un `final_sha256` con el hash del archivo lógico original reconstituido, y el `sha256` individual del fragmento.
-- El cliente será responsable de agrupar por `logical_path`, ordenar por `part_index`, verificar los hashes individuales y unir los binarios post-descarga, verificando al final el `final_sha256`.
-
-## Responsabilidades
-- **D1 Database**: Responsable única del MANIFEST lógico. Qué actualizar, en qué orden y cómo validar el producto final.
-- **GitHub Releases**: Almacenamiento seguro, inmutable e ilimitado de blobs y binarios (`.jar`, `.exe`, archivos divididos).
+D1 always dictates whether a release is truly published.

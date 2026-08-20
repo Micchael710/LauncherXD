@@ -1,3 +1,5 @@
+import { GitHubReleaseProvider } from '../../services/providers/github-release-provider';
+import { ReleasePublishingService } from '../../services/release-publishing-service';
 import { Hono } from 'hono';
 import { Bindings, CreateReleaseInput, UpdateReleaseInput } from '../../types';
 import { ReleaseRepository } from '../../repositories/release-repository';
@@ -142,5 +144,68 @@ releasesApp.get('/:id/validation', async (c) => {
 
 // Mount nested routes for release files
 releasesApp.route('/:releaseId/files', releaseFilesApp);
+
+
+
+releasesApp.post('/:id/github/prepare', async (c) => {
+  const id = c.req.param('id');
+  const repo = new ReleaseRepository(c.env.DB);
+  const provider = new GitHubReleaseProvider({ owner: c.env.GITHUB_OWNER, repo: c.env.GITHUB_RELEASES_REPO, token: c.env.GITHUB_TOKEN });
+  const service = new ReleasePublishingService(provider, repo);
+  try {
+    const res = await service.prepare(id);
+    AdminAuditLogger.logAction(c.get('adminIdentity'), 'releases', id, 'prepare', 'success');
+    return c.json(res);
+  } catch (e: any) {
+    if (e.message === 'not_found') return c.json({ error: 'not_found' }, 404);
+    if (e.message === 'not_draft') return c.json({ error: 'conflict', details: ['not_draft'] }, 409);
+    if (e.message === 'validation_failed') return c.json({ error: 'validation_error', details: ['release_not_ready'] }, 400);
+    if (e.message === 'conflict_already_published') return c.json({ error: 'conflict', details: ['tag_already_published'] }, 409);
+    return c.json({ error: 'github_error', message: e.message }, 500);
+  }
+});
+
+releasesApp.get('/:id/github/status', async (c) => {
+  const id = c.req.param('id');
+  const repo = new ReleaseRepository(c.env.DB);
+  const provider = new GitHubReleaseProvider({ owner: c.env.GITHUB_OWNER, repo: c.env.GITHUB_RELEASES_REPO, token: c.env.GITHUB_TOKEN });
+  const service = new ReleasePublishingService(provider, repo);
+  try {
+    const res = await service.status(id);
+    return c.json(res);
+  } catch (e: any) {
+    if (e.message === 'not_found') return c.json({ error: 'not_found' }, 404);
+    if (e.message === 'not_prepared') return c.json({ error: 'conflict', details: ['not_prepared'] }, 409);
+    return c.json({ error: 'github_error', message: e.message }, 500);
+  }
+});
+
+releasesApp.post('/:id/publish', async (c) => {
+  const id = c.req.param('id');
+  let body: any;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'validation_error', details: ['invalid_json'] }, 400);
+  }
+
+  if (!body.confirm_version) return c.json({ error: 'validation_error', details: ['missing_confirm_version'] }, 400);
+
+  const repo = new ReleaseRepository(c.env.DB);
+  const provider = new GitHubReleaseProvider({ owner: c.env.GITHUB_OWNER, repo: c.env.GITHUB_RELEASES_REPO, token: c.env.GITHUB_TOKEN });
+  const service = new ReleasePublishingService(provider, repo);
+
+  try {
+    const res = await service.publish(id, body.confirm_version);
+    AdminAuditLogger.logAction(c.get('adminIdentity'), 'releases', id, 'publish', 'success');
+    return c.json(res);
+  } catch (e: any) {
+    if (e.message === 'not_found') return c.json({ error: 'not_found' }, 404);
+    if (e.message === 'invalid_confirm_version') return c.json({ error: 'validation_error', details: ['invalid_confirm_version'] }, 400);
+    if (e.message === 'not_prepared') return c.json({ error: 'conflict', details: ['not_prepared'] }, 409);
+    if (e.message === 'assets_missing') return c.json({ error: 'conflict', details: ['assets_missing'] }, 409);
+    return c.json({ error: 'github_error', message: e.message }, 500);
+  }
+});
 
 export default releasesApp;

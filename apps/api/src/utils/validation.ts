@@ -196,3 +196,15 @@ export function validateReleaseReady(release: any, files: any[]): ValidationErro
 
   return issues;
 }
+export async function getExpectedAssetName(physicalPath: string, basename: string): Promise<string> {
+  const enc = new TextEncoder();
+  const hashBuffer = await crypto.subtle.digest('SHA-256', enc.encode(physicalPath));
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  const safeBasename = basename.replace(/[^a-zA-Z0-9.-]/g, '_').substring(0, 50);
+  return 'lx-' + hashHex + '-' + safeBasename;
+}
+
+export function getCanonicalTag(releaseType: string, channel: string, version: string): string {
+  return releaseType + '-' + channel + '-v' + version;
+}

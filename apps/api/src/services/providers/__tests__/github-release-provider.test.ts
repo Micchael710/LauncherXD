@@ -11,7 +11,7 @@ describe('GitHubReleaseProvider', () => {
     repo: 'testrepo',
     token: 'testtoken'
   };
-  
+
   let provider: GitHubReleaseProvider;
 
   beforeEach(() => {
@@ -35,6 +35,24 @@ describe('GitHubReleaseProvider', () => {
         'Authorization': 'Bearer testtoken'
       })
     }));
+  });
+
+  it('should use correct LauncherXD-Releases repository URL derived from config', async () => {
+    const customConfig = {
+      owner: 'Micchael710',
+      repo: 'LauncherXD-Releases',
+      token: 'testtoken'
+    };
+    const customProvider = new GitHubReleaseProvider(customConfig);
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+    } as any);
+
+    await customProvider.checkConnection();
+
+    expect(globalThis.fetch).toHaveBeenCalledWith('https://api.github.com/repos/Micchael710/LauncherXD-Releases', expect.any(Object));
   });
 
   it('should throw controlled error on 401 unauthorized', async () => {

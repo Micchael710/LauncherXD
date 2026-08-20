@@ -15,7 +15,7 @@
   },
   "vars": {
     "GITHUB_OWNER": "Micchael710",
-    "GITHUB_RELEASES_REPO": "LauncherXD",
+    "GITHUB_RELEASES_REPO": "LauncherXD-Releases",
     "CLOUDFLARE_ACCESS_TEAM_DOMAIN": "",
     "CLOUDFLARE_ACCESS_AUD": ""
   }

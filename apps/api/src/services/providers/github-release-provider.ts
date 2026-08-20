@@ -1,4 +1,4 @@
-import { ArtifactStorageProvider, StorageAsset, StorageRelease } from './artifact-storage-provider';
+import { ArtifactPublishingProvider, StorageAsset, StorageRelease } from './artifact-storage-provider';
 
 export interface GitHubProviderConfig {
   owner: string;
@@ -6,7 +6,7 @@ export interface GitHubProviderConfig {
   token?: string;
 }
 
-export class GitHubReleaseProvider implements ArtifactStorageProvider {
+export class GitHubReleaseProvider implements ArtifactPublishingProvider {
   private config: GitHubProviderConfig;
   private baseUrl = 'https://api.github.com';
 
@@ -26,26 +26,44 @@ export class GitHubReleaseProvider implements ArtifactStorageProvider {
     return headers;
   }
 
-  private async fetchApi(path: string): Promise<Response> {
+  private async fetchApi(path: string, options?: RequestInit): Promise<Response> {
     const url = `${this.baseUrl}/repos/${this.config.owner}/${this.config.repo}${path}`;
     const response = await fetch(url, {
-      method: 'GET',
-      headers: this.getHeaders(),
+      method: options?.method || 'GET',
+      headers: { ...this.getHeaders(), ...(options?.headers || {}) },
+      body: options?.body
     });
 
     if (!response.ok) {
-      if (response.status === 401) {
-        throw new Error('github_unauthorized');
-      }
-      if (response.status === 403) {
-        throw new Error('github_forbidden');
-      }
-      if (response.status === 404) {
-        throw new Error('github_not_found');
-      }
+      if (response.status === 401) throw new Error('github_unauthorized');
+      if (response.status === 403) throw new Error('github_forbidden');
+      if (response.status === 404) throw new Error('github_not_found');
+      if (response.status === 422) throw new Error('github_validation_failed');
       throw new Error('github_unavailable');
     }
-    
+
+    return response;
+  }
+
+  private async fetchUploadApi(releaseId: string, name: string, content: string | ArrayBuffer, contentType: string): Promise<Response> {
+    const url = `https://uploads.github.com/repos/${this.config.owner}/${this.config.repo}/releases/${releaseId}/assets?name=${encodeURIComponent(name)}`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        ...this.getHeaders(),
+        'Content-Type': contentType
+      },
+      body: content as any
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) throw new Error('github_unauthorized');
+      if (response.status === 403) throw new Error('github_forbidden');
+      if (response.status === 404) throw new Error('github_not_found');
+      if (response.status === 422) throw new Error('github_validation_failed');
+      throw new Error('github_unavailable');
+    }
+
     return response;
   }
 
@@ -78,7 +96,7 @@ export class GitHubReleaseProvider implements ArtifactStorageProvider {
       if (!data || typeof data.id === 'undefined' || !data.tag_name) {
         throw new Error('github_invalid_response');
       }
-      
+
       return {
         id: data.id.toString(),
         tag: data.tag_name,
@@ -107,7 +125,7 @@ export class GitHubReleaseProvider implements ArtifactStorageProvider {
       } catch (e) {
         throw new Error('github_invalid_response');
       }
-      
+
       if (!data || !Array.isArray(data.assets)) {
         throw new Error('github_invalid_response');
       }
@@ -122,7 +140,9 @@ export class GitHubReleaseProvider implements ArtifactStorageProvider {
           name: a.name,
           size: a.size,
           downloadUrl: a.browser_download_url,
-          contentType: a.content_type ?? null
+          contentType: a.content_type ?? null,
+          state: a.state,
+          digest: a.label
         };
       });
     } catch (error: any) {
@@ -134,5 +154,68 @@ export class GitHubReleaseProvider implements ArtifactStorageProvider {
       }
       throw error;
     }
+  }
+
+  async createDraftRelease(tag: string, name: string, notes: string, prerelease?: boolean): Promise<StorageRelease> {
+    if (!this.config.token) throw new Error('github_write_unavailable');
+    const res = await this.fetchApi('/releases', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tag_name: tag,
+        name: name,
+        body: notes,
+        draft: true,
+        prerelease: prerelease ?? false
+      })
+    });
+
+    let data: any;
+    try { data = await res.json(); } catch { throw new Error('github_invalid_response'); }
+
+    if (!data || typeof data.id === 'undefined') throw new Error('github_invalid_response');
+
+    return {
+      id: data.id.toString(),
+      tag: data.tag_name,
+      name: data.name ?? null,
+      draft: Boolean(data.draft),
+      prerelease: Boolean(data.prerelease),
+      publishedAt: data.published_at ?? null
+    };
+  }
+
+  async updateRelease(releaseId: string, draft: boolean): Promise<void> {
+    if (!this.config.token) throw new Error('github_write_unavailable');
+    await this.fetchApi(`/releases/${releaseId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ draft, make_latest: "false" })
+    });
+  }
+
+  async uploadGeneratedAsset(releaseId: string, filename: string, content: string | ArrayBuffer, contentType: string): Promise<StorageAsset> {
+    if (!this.config.token) throw new Error('github_write_unavailable');
+    const res = await this.fetchUploadApi(releaseId, filename, content, contentType);
+
+    let data: any;
+    try { data = await res.json(); } catch { throw new Error('github_invalid_response'); }
+
+    if (!data || typeof data.id === 'undefined') throw new Error('github_invalid_response');
+
+    return {
+      id: data.id.toString(),
+      name: data.name,
+      size: data.size,
+      downloadUrl: data.browser_download_url,
+      contentType: data.content_type ?? null
+    };
+  }
+
+  async deleteGeneratedManifest(releaseId: string, assetId: string): Promise<void> {
+    if (!this.config.token) throw new Error('github_write_unavailable');
+    await this.fetchApi(`/releases/assets/${assetId}`, {
+      method: 'DELETE'
+    });
   }
 }

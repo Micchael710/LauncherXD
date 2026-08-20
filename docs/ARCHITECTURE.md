@@ -1,45 +1,22 @@
-# Arquitectura del Backend - LauncherXD
+# Architecture
 
-## Estado Actual (Fase 3)
-La arquitectura está diseñada para separar claramente el backend (API) de los futuros frontends (Launcher desktop y Back Office web).
-En la Fase 3, se desplegó exitosamente la API de manera remota en Cloudflare Workers y se introdujo una capa abstracta `ArtifactStorageProvider` para conectar de forma desacoplada a GitHub Releases.
+The system is composed of several strictly isolated components.
 
-## Detalles Técnicos
-- **Ubicación del Worker**: `apps/api/` (Aislado del futuro frontend).
-- **Nombre del Worker**: `launcherxd-api`
-- **Binding DB**: `DB` (apunta a la base de datos `launcherxd-db`)
-- **Migraciones**: Los cambios en D1 se aplican a través de `apps/api/migrations/*.sql`
-- **Arquitectura Interna**: `Hono` Routes -> Services -> Storage Providers & Repositories -> GitHub & D1 Database
+## Repositories
+*   **LauncherXD** (\Micchael710/LauncherXD\): Source code, Worker, D1 schema, and documentation.
+*   **LauncherXD-Releases** (\Micchael710/LauncherXD-Releases\): Distribution repository. Exclusively stores GitHub Releases, manifests, and large binary assets (.jar, .zip).
 
-## Cómo Ejecutar Localmente
-1. Abrir una terminal en `apps/api/`
-2. Instalar dependencias: `npm install`
-3. Opcional: Cargar datos de prueba locales (seeds) ejecutando `npx wrangler d1 execute launcherxd-db --local --file apps/api/seeds/local.sql`. NUNCA se debe usar `--remote` con scripts de seeds.
-4. Iniciar el servidor de desarrollo: `npm run dev`
+## Administrative Back Office (Local)
+**The Back Office is a local-only application** executing on the administrator's PC via \localhost\. It will NOT be deployed to Cloudflare Pages as a public web application.
+It consists of two parts:
+1.  **Local UI**: Runs in the browser at \localhost:<port>\. The browser **never** receives the GitHub PAT/token.
+2.  **Local Backend**: A localhost server that securely stores the GitHub credentials (e.g. via Windows Credential Manager). **The Local Backend handles large GitHub binary uploads** directly to the GitHub API, avoiding Cloudflare Worker payload limits and memory constraints.
 
-## Estructura Modular
-El código fuente dentro de `apps/api/src/` está dividido en:
-- `routes/`: Define endpoints de HTTP y extrae variables/parámetros.
-- `services/`: Contiene la lógica de negocio, mapeos y validaciones.
-  - **`providers/`**: Implementaciones del `ArtifactStorageProvider` (actualmente `GitHubReleaseProvider`) para conectarse a plataformas externas sin acoplar el código al almacenamiento específico.
-- `repositories/`: Interactúa de forma directa y única con D1 usando consultas seguras (prepared statements).
-- `types/`: Define interfaces tipadas.
+## Cloudflare Worker & D1
+The Worker is the central authority for release metadata and publication lifecycle.
+*   The Worker **does NOT proxy large binary uploads**.
+*   The Worker generates and uploads the \launcherxd-manifest.json\ directly to GitHub.
+*   **D1 remains the sole source of truth** for metadata, ensuring consistency.
 
-## Qué NO se ha implementado todavía (Fase 3)
-- Frontend, interfaces visuales ni pantallas de login.
-- Endpoints administrativos (creación, subida y publicación).
-- Autenticación o roles de usuarios.
-- Downloader del cliente (Streaming a disco, parallel downloads).
-- **Subida de Archivos Grandes (Uploads)**: Aún no implementado. La futura solución NO usará el navegador web directamente contra el API de GitHub (porque expondría el `GITHUB_TOKEN`). Tampoco usará de forma ingenua el Worker como proxy para evitar cuellos de botella de GBs de datos. El diseño definitivo está pendiente.
-
-## Regla de Referencia: Orion Launcher
-Existe un launcher anterior (`Orion-Launcher-electron-main`) que funcionó correctamente. Para futuras implementaciones (como downloader, updater, validación de hashes, progreso, instalación, etc.), se debe seguir esta regla:
-1. **Inspeccionar Orion primero**: Analizar cómo resolvieron el problema.
-2. **Reutilizar o Adaptar**: Si la implementación sigue buenas prácticas, es segura, eficiente, está bien estructurada y sigue siendo apropiada, se debe reutilizar o adaptar.
-3. **Mejorar**: Si la implementación antigua es defectuosa, se debe crear una nueva y mejor solución. NO copiar automáticamente código sólo porque funcionó.
-4. **Prohibido importar**: Secretos, tokens, credenciales o configuraciones de Firebase innecesarias.
-
-## Seguridad Administrativa
-- Cloudflare Access es el proveedor de identidad principal para las rutas `/api/admin/*`.
-- No hay contrase�as internas ni tokens est�ticos fijos expuestos a clientes.
-- Todo token en `Cf-Access-Jwt-Assertion` es validado con `jose` contra el JWKS de Cloudflare, operando en modelo *fail-closed* si el proveedor no est� disponible.
+## Launcher (Client)
+The Launcher application will query the Cloudflare Worker/D1 to fetch metadata and the manifest, and then download the large binary assets directly from \LauncherXD-Releases\ via GitHub.
