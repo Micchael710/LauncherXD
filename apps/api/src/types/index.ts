@@ -5,6 +5,7 @@ export type Bindings = {
   GITHUB_TOKEN?: string;
   CLOUDFLARE_ACCESS_TEAM_DOMAIN: string;
   CLOUDFLARE_ACCESS_AUD: string;
+  ADMIN_API_TOKEN?: string;
 };
 
 export type Release = {
