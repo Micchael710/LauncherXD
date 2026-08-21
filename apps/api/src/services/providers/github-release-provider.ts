@@ -83,13 +83,28 @@ export class GitHubReleaseProvider implements ArtifactPublishingProvider {
     }
   }
 
+  private mapStorageAsset(a: any): StorageAsset {
+    if (typeof a.id === 'undefined' || !a.name || typeof a.size === 'undefined' || !a.browser_download_url) {
+      throw new Error('github_invalid_response');
+    }
+    return {
+      id: a.id.toString(),
+      name: a.name,
+      size: a.size,
+      downloadUrl: a.browser_download_url,
+      contentType: a.content_type ?? null,
+      state: a.state,
+      digest: a.label
+    };
+  }
+
   async getRelease(tag: string): Promise<StorageRelease | null> {
     try {
       const res = await this.fetchApi(`/releases/tags/${tag}`);
       let data: any;
       try {
         data = await res.json();
-      } catch (e) {
+      } catch {
         throw new Error('github_invalid_response');
       }
 
@@ -107,6 +122,25 @@ export class GitHubReleaseProvider implements ArtifactPublishingProvider {
       };
     } catch (error: any) {
       if (error.message === 'github_not_found') {
+        try {
+          const listRes = await this.fetchApi('/releases?per_page=100');
+          const listData: any = await listRes.json();
+          if (Array.isArray(listData)) {
+            const found = listData.find((r: any) => r.tag_name === tag);
+            if (found && typeof found.id !== 'undefined') {
+              return {
+                id: found.id.toString(),
+                tag: found.tag_name,
+                name: found.name ?? null,
+                draft: Boolean(found.draft),
+                prerelease: Boolean(found.prerelease),
+                publishedAt: found.published_at ?? null
+              };
+            }
+          }
+        } catch {
+          // Ignore fallback error
+        }
         return null;
       }
       if (error.message === 'github_invalid_response') {
@@ -122,7 +156,7 @@ export class GitHubReleaseProvider implements ArtifactPublishingProvider {
       let data: any;
       try {
         data = await res.json();
-      } catch (e) {
+      } catch {
         throw new Error('github_invalid_response');
       }
 
@@ -130,23 +164,21 @@ export class GitHubReleaseProvider implements ArtifactPublishingProvider {
         throw new Error('github_invalid_response');
       }
 
-      const assets: any[] = data.assets;
-      return assets.map(a => {
-        if (typeof a.id === 'undefined' || !a.name || typeof a.size === 'undefined' || !a.browser_download_url) {
-          throw new Error('github_invalid_response');
-        }
-        return {
-          id: a.id.toString(),
-          name: a.name,
-          size: a.size,
-          downloadUrl: a.browser_download_url,
-          contentType: a.content_type ?? null,
-          state: a.state,
-          digest: a.label
-        };
-      });
+      return data.assets.map((a: any) => this.mapStorageAsset(a));
     } catch (error: any) {
       if (error.message === 'github_not_found') {
+        try {
+          const listRes = await this.fetchApi('/releases?per_page=100');
+          const listData: any = await listRes.json();
+          if (Array.isArray(listData)) {
+            const found = listData.find((r: any) => r.tag_name === tag);
+            if (found && Array.isArray(found.assets)) {
+              return found.assets.map((a: any) => this.mapStorageAsset(a));
+            }
+          }
+        } catch {
+          // Ignore fallback error
+        }
         return [];
       }
       if (error.message === 'github_invalid_response') {
