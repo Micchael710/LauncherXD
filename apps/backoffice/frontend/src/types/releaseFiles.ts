@@ -8,12 +8,12 @@ export interface ReleaseFile {
     filename: string;
     operation: ReleaseFileOperation;
     size: number;
-    sha256?: string;
-    download_url?: string;
-    github_asset_id?: string;
-    part_index?: number;
-    part_count?: number;
-    final_sha256?: string;
+    sha256?: string | null;
+    download_url?: string | null;
+    github_asset_id?: string | null;
+    part_index?: number | null;
+    part_count?: number | null;
+    final_sha256?: string | null;
     created_at: string;
 }
 

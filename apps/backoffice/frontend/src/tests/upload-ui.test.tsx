@@ -271,4 +271,41 @@ describe('Physical Asset Upload UI Functional Tests', () => {
             expect(screen.getByText('✓ Multipart assets ready')).toBeDefined();
         });
     });
+
+    test('6. Unverified upload response (verified=false) displays pending verification and NOT Upload verified', async () => {
+        const user = userEvent.setup();
+        vi.spyOn(ReleasesApi, 'getRelease').mockResolvedValue(mockDraftRelease);
+        vi.spyOn(ReleaseFilesApi, 'listReleaseFiles').mockResolvedValue({ value: [mockStandaloneFiles[0]], Count: 1 });
+        vi.spyOn(ReleasesApi, 'validateRelease').mockResolvedValue({ valid: true, issues: [] });
+
+        vi.spyOn(ReleaseFilesApi, 'uploadPhysicalAsset').mockResolvedValueOnce({
+            status: 'ok',
+            verified: false,
+            warning: 'UPLOAD_NOT_VERIFIED'
+        });
+
+        render(
+            <MemoryRouter initialEntries={['/releases/rel-draft-1']}>
+                <Routes>
+                    <Route path="/releases/:id" element={<ReleaseDetailPage />} />
+                </Routes>
+            </MemoryRouter>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByTestId('upload-btn-file-add-1')).toBeDefined();
+        });
+
+        const fileInput = screen.getByLabelText(/Upload file for sodium.jar/i) as HTMLInputElement;
+        const fakeFile = new File(['sodium binary content'], 'sodium.jar', { type: 'application/java-archive' });
+
+        await user.upload(fileInput, fakeFile);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('upload-pending-file-add-1')).toBeDefined();
+            expect(screen.getByText('Upload completed — verification pending')).toBeDefined();
+            expect(screen.queryByText('✓ Upload verified')).toBeNull();
+            expect(screen.queryByRole('alert')).toBeNull();
+        });
+    });
 });
