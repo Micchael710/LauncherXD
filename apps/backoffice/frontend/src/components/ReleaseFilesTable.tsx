@@ -5,7 +5,7 @@ import { ReleaseFilesApi } from '../api/releaseFiles';
 import { formatApiErrorMessage } from '../api/client';
 
 interface FileUploadState {
-    status: 'idle' | 'uploading' | 'verifying' | 'ready' | 'error';
+    status: 'idle' | 'uploading' | 'verifying' | 'pending' | 'ready' | 'error';
     percent: number;
     loaded: number;
     total: number;
@@ -65,7 +65,7 @@ export const ReleaseFilesTable: React.FC<Props> = ({
         }));
 
         try {
-            await ReleaseFilesApi.uploadPhysicalAsset(
+            const res = await ReleaseFilesApi.uploadPhysicalAsset(
                 releaseId,
                 file.id,
                 selectedFile,
@@ -83,16 +83,29 @@ export const ReleaseFilesTable: React.FC<Props> = ({
                 }
             );
 
-            setUploadStates((prev) => ({
-                ...prev,
-                [file.id]: {
-                    status: 'ready',
-                    percent: 100,
-                    loaded: selectedFile.size,
-                    total: selectedFile.size,
-                    error: null
-                }
-            }));
+            if (res.verified) {
+                setUploadStates((prev) => ({
+                    ...prev,
+                    [file.id]: {
+                        status: 'ready',
+                        percent: 100,
+                        loaded: selectedFile.size,
+                        total: selectedFile.size,
+                        error: null
+                    }
+                }));
+            } else {
+                setUploadStates((prev) => ({
+                    ...prev,
+                    [file.id]: {
+                        status: 'pending',
+                        percent: 100,
+                        loaded: selectedFile.size,
+                        total: selectedFile.size,
+                        error: null
+                    }
+                }));
+            }
 
             onAssetUploaded?.();
         } catch (err: unknown) {
@@ -138,6 +151,8 @@ export const ReleaseFilesTable: React.FC<Props> = ({
 
                 {state?.status === 'ready' ? (
                     <span className="badge badge-ready" data-testid={`upload-ready-${file.id}`}>✓ Upload verified</span>
+                ) : state?.status === 'pending' ? (
+                    <span className="badge badge-beta" data-testid={`upload-pending-${file.id}`}>Upload completed — verification pending</span>
                 ) : isUploading ? (
                     <div>
                         {state?.status === 'verifying' ? (

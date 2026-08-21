@@ -781,7 +781,7 @@ describe('Release Files & Readiness UI Functional Tests', () => {
         });
     });
 
-    test('22. Edit standalone Release File with null part_index, part_count, final_sha256 opens without crashing and saves PATCH', async () => {
+    test('22. Edit standalone Release File with actual null sha256, part_index, part_count, final_sha256 opens without crashing and saves PATCH', async () => {
         const user = userEvent.setup();
         const standaloneWithNulls: ReleaseFile = {
             id: 'file-nulls',
@@ -791,10 +791,10 @@ describe('Release Files & Readiness UI Functional Tests', () => {
             filename: 'sodium.jar',
             operation: 'add',
             size: 1024,
-            sha256: mockFullSha,
-            part_index: undefined,
-            part_count: undefined,
-            final_sha256: undefined,
+            sha256: null,
+            part_index: null,
+            part_count: null,
+            final_sha256: null,
             created_at: '2026-08-20T00:00:00Z'
         };
 
@@ -831,21 +831,24 @@ describe('Release Files & Readiness UI Functional Tests', () => {
 
         const pathInput = screen.getByLabelText(/^Path/i) as HTMLInputElement;
         const logicalPathInput = screen.getByLabelText(/Logical Path/i) as HTMLInputElement;
+        const sha256Input = screen.getByLabelText(/^SHA-256/i) as HTMLInputElement;
         const partIndexInput = screen.getByLabelText(/Part Index/i) as HTMLInputElement;
         const partCountInput = screen.getByLabelText(/Part Count/i) as HTMLInputElement;
         const finalShaInput = screen.getByLabelText(/Final SHA-256/i) as HTMLInputElement;
 
         expect(pathInput.value).toBe('sodium.jar');
         expect(logicalPathInput.value).toBe('sodium.jar');
+        expect(sha256Input.value).toBe('');
         expect(partIndexInput.value).toBe('');
         expect(partCountInput.value).toBe('');
         expect(finalShaInput.value).toBe('');
 
-        // Edit path and logical path
+        // Edit path, logical path, and provide SHA-256
         await user.clear(pathInput);
         await user.type(pathInput, 'mods/sodium.jar');
         await user.clear(logicalPathInput);
         await user.type(logicalPathInput, 'mods/sodium.jar');
+        await user.type(sha256Input, mockFullSha);
 
         const saveBtn = screen.getByRole('button', { name: 'Save Changes' });
         await user.click(saveBtn);
@@ -853,7 +856,8 @@ describe('Release Files & Readiness UI Functional Tests', () => {
         await waitFor(() => {
             expect(updateSpy).toHaveBeenCalledWith('rel-draft-1', 'file-nulls', {
                 path: 'mods/sodium.jar',
-                logical_path: 'mods/sodium.jar'
+                logical_path: 'mods/sodium.jar',
+                sha256: mockFullSha
             });
         });
 

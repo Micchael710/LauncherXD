@@ -12,5 +12,8 @@ tmp/
 credentials*
 secrets*
 tokens*
+!apps/backoffice/frontend/src/api/credentials.ts
+!apps/backoffice/frontend/src/types/credentials.ts
+!apps/backoffice/frontend/src/tests/credentials-ui.test.tsx
 .agents/mcp_config.json
 .wrangler/
