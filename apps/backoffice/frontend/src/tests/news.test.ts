@@ -112,7 +112,61 @@ describe('NewsApi Client & Normalization Tests', () => {
         expect(res).toEqual({ id: 'news-created-123', status: 'created' });
     });
 
-    test('createNews strictly whitelists allowed properties and strips runtime extra properties', async () => {
+    test('createNews with video_url and target_url sends both exact fields in JSON payload', async () => {
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            status: 201,
+            json: () => Promise.resolve({ id: 'news-vid-1', status: 'created' })
+        });
+
+        const input: CreateNewsInput = {
+            title: 'Gameplay Trailer Announcement',
+            summary: 'Check out our new trailer video!',
+            video_url: 'https://cdn.example.com/trailer.mp4',
+            target_url: 'https://example.com/announcement',
+            published: true
+        };
+
+        const res = await NewsApi.createNews(input);
+
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+        expect(mockFetch).toHaveBeenCalledWith('http://127.0.0.1:3000/api/admin/news', {
+            method: 'POST',
+            body: JSON.stringify(input),
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        expect(res).toEqual({ id: 'news-vid-1', status: 'created' });
+    });
+
+    test('createNews when video_url is undefined omits the key from JSON payload', async () => {
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            status: 201,
+            json: () => Promise.resolve({ id: 'news-novid-1', status: 'created' })
+        });
+
+        const input: CreateNewsInput = {
+            title: 'No Video News',
+            published: false
+        };
+
+        await NewsApi.createNews(input);
+
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+        const callArgs = mockFetch.mock.calls[0];
+        const requestOptions = callArgs[1] as RequestInit;
+        const parsedBody = JSON.parse(requestOptions.body as string) as Record<string, unknown>;
+
+        expect(parsedBody).toEqual({
+            title: 'No Video News',
+            published: false
+        });
+        expect('video_url' in parsedBody).toBe(false);
+    });
+
+    test('createNews strictly whitelists allowed properties including video_url and strips runtime extra properties', async () => {
         mockFetch.mockResolvedValueOnce({
             ok: true,
             status: 201,
@@ -123,6 +177,7 @@ describe('NewsApi Client & Normalization Tests', () => {
             title: 'Valid News Title',
             summary: 'Valid summary text',
             image_url: 'https://example.com/image.png',
+            video_url: 'https://example.com/video.mp4',
             target_url: 'https://example.com/target',
             published: true,
             id: 'injected-id',
@@ -137,12 +192,13 @@ describe('NewsApi Client & Normalization Tests', () => {
         expect(mockFetch).toHaveBeenCalledTimes(1);
         const callArgs = mockFetch.mock.calls[0];
         const requestOptions = callArgs[1] as RequestInit;
-        const parsedBody = JSON.parse(requestOptions.body as string);
+        const parsedBody = JSON.parse(requestOptions.body as string) as Record<string, unknown>;
 
         expect(parsedBody).toEqual({
             title: 'Valid News Title',
             summary: 'Valid summary text',
             image_url: 'https://example.com/image.png',
+            video_url: 'https://example.com/video.mp4',
             target_url: 'https://example.com/target',
             published: true
         });
@@ -152,7 +208,7 @@ describe('NewsApi Client & Normalization Tests', () => {
         expect(parsedBody.created_at).toBeUndefined();
         expect(parsedBody.updated_at).toBeUndefined();
         expect(parsedBody.unexpected_field).toBeUndefined();
-        expect(Object.keys(parsedBody).sort()).toEqual(['image_url', 'published', 'summary', 'target_url', 'title'].sort());
+        expect(Object.keys(parsedBody).sort()).toEqual(['image_url', 'published', 'summary', 'target_url', 'title', 'video_url'].sort());
     });
 
     test('createNews handles 400 validation error (invalid_title)', async () => {
@@ -344,7 +400,63 @@ describe('NewsApi Client & Normalization Tests', () => {
         });
     });
 
-    test('updateNews strictly whitelists properties and strips runtime extra properties', async () => {
+    test('updateNews sending video_url sends exact partial payload with video_url', async () => {
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ status: 'ok' })
+        });
+
+        await NewsApi.updateNews('news-vid-patch', { video_url: 'https://cdn.example.com/trailer.mp4' });
+
+        const callArgs = mockFetch.mock.calls[0];
+        const requestOptions = callArgs[1] as RequestInit;
+        const parsedBody = JSON.parse(requestOptions.body as string) as Record<string, unknown>;
+
+        expect(parsedBody).toEqual({ video_url: 'https://cdn.example.com/trailer.mp4' });
+        expect(Object.keys(parsedBody)).toEqual(['video_url']);
+    });
+
+    test('updateNews preserves empty string video_url for clearing video during PATCH', async () => {
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ status: 'ok' })
+        });
+
+        await NewsApi.updateNews('news-clear-vid', {
+            video_url: '',
+            image_url: 'https://example.com/replacement.png'
+        });
+
+        const callArgs = mockFetch.mock.calls[0];
+        const requestOptions = callArgs[1] as RequestInit;
+        const parsedBody = JSON.parse(requestOptions.body as string) as Record<string, unknown>;
+
+        expect(parsedBody).toEqual({
+            video_url: '',
+            image_url: 'https://example.com/replacement.png'
+        });
+    });
+
+    test('updateNews when video_url is undefined omits the key from JSON payload', async () => {
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ status: 'ok' })
+        });
+
+        await NewsApi.updateNews('news-novid-patch', { title: 'New Title Only' });
+
+        const callArgs = mockFetch.mock.calls[0];
+        const requestOptions = callArgs[1] as RequestInit;
+        const parsedBody = JSON.parse(requestOptions.body as string) as Record<string, unknown>;
+
+        expect(parsedBody).toEqual({ title: 'New Title Only' });
+        expect('video_url' in parsedBody).toBe(false);
+    });
+
+    test('updateNews strictly whitelists properties including video_url and strips runtime extra properties', async () => {
         mockFetch.mockResolvedValueOnce({
             ok: true,
             status: 200,
@@ -355,6 +467,7 @@ describe('NewsApi Client & Normalization Tests', () => {
             title: 'Clean Title',
             summary: 'Clean Summary',
             image_url: 'https://example.com/image.png',
+            video_url: 'https://example.com/video.mp4',
             target_url: 'https://example.com/target',
             published: true,
             id: 'injected-id',
@@ -368,12 +481,13 @@ describe('NewsApi Client & Normalization Tests', () => {
 
         const callArgs = mockFetch.mock.calls[0];
         const requestOptions = callArgs[1] as RequestInit;
-        const parsedBody = JSON.parse(requestOptions.body as string);
+        const parsedBody = JSON.parse(requestOptions.body as string) as Record<string, unknown>;
 
         expect(parsedBody).toEqual({
             title: 'Clean Title',
             summary: 'Clean Summary',
             image_url: 'https://example.com/image.png',
+            video_url: 'https://example.com/video.mp4',
             target_url: 'https://example.com/target',
             published: true
         });
@@ -382,6 +496,7 @@ describe('NewsApi Client & Normalization Tests', () => {
         expect(parsedBody.created_at).toBeUndefined();
         expect(parsedBody.updated_at).toBeUndefined();
         expect(parsedBody.unexpected_field).toBeUndefined();
+        expect(Object.keys(parsedBody).sort()).toEqual(['image_url', 'published', 'summary', 'target_url', 'title', 'video_url'].sort());
     });
 
     test('updateNews handles 400 validation error', async () => {

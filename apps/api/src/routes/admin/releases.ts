@@ -1,7 +1,14 @@
+import { Hono } from 'hono';
 import { GitHubReleaseProvider } from '../../services/providers/github-release-provider';
 import { ReleasePublishingService } from '../../services/release-publishing-service';
-import { Hono } from 'hono';
-import { Bindings, CreateReleaseInput, UpdateReleaseInput } from '../../types';
+import type {
+  Bindings,
+  CreateReleaseInput,
+  UpdateReleaseInput,
+  PurgeCapabilityResponse,
+  PurgeReleaseInput,
+  PurgeReleaseResponse
+} from '../../types';
 import { ReleaseRepository } from '../../repositories/release-repository';
 import { isValidSemVer } from '../../utils/validation';
 import { AdminAuditLogger } from '../../services/admin-audit-logger';
@@ -129,6 +136,69 @@ releasesApp.delete('/:id', async (c) => {
   return c.json({ status: 'ok' });
 });
 
+releasesApp.get('/:id/purge-capability', async (c) => {
+  const id = c.req.param('id');
+  const repo = new ReleaseRepository(c.env.DB);
+  const existing = await repo.getReleaseById(id);
+  if (!existing) return c.json({ error: 'not_found' }, 404);
+
+  if (existing.release_type !== 'modpack') {
+    return c.json({ error: 'validation_error', details: ['only_modpacks_can_be_purged'] }, 400);
+  }
+
+  if (!['draft', 'published', 'deprecated'].includes(existing.status)) {
+    return c.json({ error: 'validation_error', details: ['invalid_release_status'] }, 400);
+  }
+
+  const responseData: PurgeCapabilityResponse = {
+    available: true,
+    release_id: existing.id,
+    release_type: 'modpack',
+    status: existing.status as 'draft' | 'published' | 'deprecated',
+    version: existing.version
+  };
+
+  return c.json(responseData);
+});
+
+releasesApp.post('/:id/purge', async (c) => {
+  const id = c.req.param('id');
+  let body: PurgeReleaseInput;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'validation_error', details: ['invalid_json'] }, 400);
+  }
+
+  if (!body.confirm_version) return c.json({ error: 'validation_error', details: ['missing_confirm_version'] }, 400);
+  if (!body.confirm_phrase) return c.json({ error: 'validation_error', details: ['missing_confirm_phrase'] }, 400);
+
+  const repo = new ReleaseRepository(c.env.DB);
+  const existing = await repo.getReleaseById(id);
+  if (!existing) return c.json({ error: 'not_found' }, 404);
+
+  if (existing.release_type !== 'modpack') {
+    return c.json({ error: 'validation_error', details: ['only_modpacks_can_be_purged'] }, 400);
+  }
+
+  if (!['draft', 'published', 'deprecated'].includes(existing.status)) {
+    return c.json({ error: 'validation_error', details: ['invalid_release_status'] }, 400);
+  }
+
+  if (body.confirm_version !== existing.version) {
+    return c.json({ error: 'validation_error', details: ['invalid_confirm_version'] }, 400);
+  }
+
+  if (body.confirm_phrase !== `DELETE ${existing.version}`) {
+    return c.json({ error: 'validation_error', details: ['invalid_confirm_phrase'] }, 400);
+  }
+
+  await repo.purgeRelease(id);
+  AdminAuditLogger.logAction(c.get('adminIdentity'), 'releases', id, 'purge', 'success');
+  const responseData: PurgeReleaseResponse = { status: 'ok', purged: true };
+  return c.json(responseData);
+});
+
 releasesApp.get('/:id/validation', async (c) => {
   const id = c.req.param('id');
   const repo = new ReleaseRepository(c.env.DB);
@@ -145,8 +215,6 @@ releasesApp.get('/:id/validation', async (c) => {
 // Mount nested routes for release files
 releasesApp.route('/:releaseId/files', releaseFilesApp);
 
-
-
 releasesApp.post('/:id/github/prepare', async (c) => {
   const id = c.req.param('id');
   const repo = new ReleaseRepository(c.env.DB);
@@ -156,12 +224,13 @@ releasesApp.post('/:id/github/prepare', async (c) => {
     const res = await service.prepare(id);
     AdminAuditLogger.logAction(c.get('adminIdentity'), 'releases', id, 'prepare', 'success');
     return c.json(res);
-  } catch (e: any) {
-    if (e.message === 'not_found') return c.json({ error: 'not_found' }, 404);
-    if (e.message === 'not_draft') return c.json({ error: 'conflict', details: ['not_draft'] }, 409);
-    if (e.message === 'validation_failed') return c.json({ error: 'validation_error', details: ['release_not_ready'] }, 400);
-    if (e.message === 'conflict_already_published') return c.json({ error: 'conflict', details: ['tag_already_published'] }, 409);
-    return c.json({ error: 'github_error', message: e.message }, 500);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'unknown';
+    if (msg === 'not_found') return c.json({ error: 'not_found' }, 404);
+    if (msg === 'not_draft') return c.json({ error: 'conflict', details: ['not_draft'] }, 409);
+    if (msg === 'validation_failed') return c.json({ error: 'validation_error', details: ['release_not_ready'] }, 400);
+    if (msg === 'conflict_already_published') return c.json({ error: 'conflict', details: ['tag_already_published'] }, 409);
+    return c.json({ error: 'github_error', message: msg }, 500);
   }
 });
 
@@ -173,16 +242,17 @@ releasesApp.get('/:id/github/status', async (c) => {
   try {
     const res = await service.status(id);
     return c.json(res);
-  } catch (e: any) {
-    if (e.message === 'not_found') return c.json({ error: 'not_found' }, 404);
-    if (e.message === 'not_prepared') return c.json({ error: 'conflict', details: ['not_prepared'] }, 409);
-    return c.json({ error: 'github_error', message: e.message }, 500);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'unknown';
+    if (msg === 'not_found') return c.json({ error: 'not_found' }, 404);
+    if (msg === 'not_prepared') return c.json({ error: 'conflict', details: ['not_prepared'] }, 409);
+    return c.json({ error: 'github_error', message: msg }, 500);
   }
 });
 
 releasesApp.post('/:id/publish', async (c) => {
   const id = c.req.param('id');
-  let body: any;
+  let body: { confirm_version?: string };
   try {
     body = await c.req.json();
   } catch {
@@ -199,12 +269,13 @@ releasesApp.post('/:id/publish', async (c) => {
     const res = await service.publish(id, body.confirm_version);
     AdminAuditLogger.logAction(c.get('adminIdentity'), 'releases', id, 'publish', 'success');
     return c.json(res);
-  } catch (e: any) {
-    if (e.message === 'not_found') return c.json({ error: 'not_found' }, 404);
-    if (e.message === 'invalid_confirm_version') return c.json({ error: 'validation_error', details: ['invalid_confirm_version'] }, 400);
-    if (e.message === 'not_prepared') return c.json({ error: 'conflict', details: ['not_prepared'] }, 409);
-    if (e.message === 'assets_missing') return c.json({ error: 'conflict', details: ['assets_missing'] }, 409);
-    return c.json({ error: 'github_error', message: e.message }, 500);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'unknown';
+    if (msg === 'not_found') return c.json({ error: 'not_found' }, 404);
+    if (msg === 'invalid_confirm_version') return c.json({ error: 'validation_error', details: ['invalid_confirm_version'] }, 400);
+    if (msg === 'not_prepared') return c.json({ error: 'conflict', details: ['not_prepared'] }, 409);
+    if (msg === 'assets_missing') return c.json({ error: 'conflict', details: ['assets_missing'] }, 409);
+    return c.json({ error: 'github_error', message: msg }, 500);
   }
 });
 

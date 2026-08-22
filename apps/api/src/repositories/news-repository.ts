@@ -26,11 +26,11 @@ export class NewsRepository {
 
   async createNews(news: News): Promise<void> {
     const stmt = this.db.prepare(
-      `INSERT INTO news (id, title, summary, image_url, target_url, published, published_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO news (id, title, summary, image_url, video_url, target_url, published, published_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     await stmt.bind(
-      news.id, news.title, news.summary ?? null, news.image_url ?? null, news.target_url ?? null,
+      news.id, news.title, news.summary ?? null, news.image_url ?? null, news.video_url ?? null, news.target_url ?? null,
       news.published ? 1 : 0, news.published_at ?? null, news.created_at, news.updated_at
     ).run();
   }

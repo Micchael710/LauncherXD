@@ -56,7 +56,19 @@ export function isValidNewsUrl(url: string | undefined | null): boolean {
     const parsed = new URL(url);
     // Allowlist explicit protocols
     return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-  } catch (e) {
+  } catch {
+    return false;
+  }
+}
+
+export function isValidNewsVideoUrl(url: string | undefined | null): boolean {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    const pathname = parsed.pathname.toLowerCase();
+    return pathname.endsWith('.mp4') || pathname.endsWith('.webm');
+  } catch {
     return false;
   }
 }
@@ -196,6 +208,7 @@ export function validateReleaseReady(release: any, files: any[]): ValidationErro
 
   return issues;
 }
+
 export async function getExpectedAssetName(physicalPath: string, basename: string): Promise<string> {
   const enc = new TextEncoder();
   const hashBuffer = await crypto.subtle.digest('SHA-256', enc.encode(physicalPath));

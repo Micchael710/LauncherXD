@@ -5,8 +5,6 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { ReleaseDetailPage } from '../pages/ReleaseDetailPage';
 import { ReleasesApi } from '../api/releases';
 import { ReleaseFilesApi } from '../api/releaseFiles';
-import { InspectApi } from '../api/inspect';
-import type { FileInspectResult } from '../api/inspect';
 import { ApiClientError } from '../api/client';
 import type { Release } from '../types/releases';
 import type { ReleaseFile } from '../types/releaseFiles';
@@ -731,18 +729,11 @@ describe('Release Files & Readiness UI Functional Tests', () => {
         });
     });
 
-    test('21. Local Inspector integration, FormData upload and non-overwriting paths', async () => {
+    test('21. File selection triggers automatic analysis, auto-populates paths and generates processing plan', async () => {
         const user = userEvent.setup();
         vi.spyOn(ReleasesApi, 'getRelease').mockResolvedValueOnce(mockDraftRelease);
         vi.spyOn(ReleaseFilesApi, 'listReleaseFiles').mockResolvedValue({ value: [], Count: 0 });
         vi.spyOn(ReleasesApi, 'validateRelease').mockResolvedValue({ valid: true, issues: [] });
-
-        let resolveInspect: ((res: FileInspectResult) => void) | undefined;
-        vi.spyOn(InspectApi, 'inspectLocalFile').mockImplementationOnce(() => {
-            return new Promise((resolve) => {
-                resolveInspect = resolve;
-            });
-        });
 
         render(
             <MemoryRouter initialEntries={['/releases/rel-draft-1']}>
@@ -757,27 +748,15 @@ describe('Release Files & Readiness UI Functional Tests', () => {
         });
 
         const fileInput = screen.getByLabelText(/Inspect local file/i) as HTMLInputElement;
-        const submitBtn = screen.getByRole('button', { name: 'Add File' });
         const fakeFile = new File(['file contents'], 'mod.jar', { type: 'application/java-archive' });
 
         await user.upload(fileInput, fakeFile);
 
-        expect(screen.getByText('Inspecting file...')).toBeDefined();
-        expect(fileInput.hasAttribute('disabled')).toBe(true);
-        expect(submitBtn.hasAttribute('disabled')).toBe(true);
-
-        resolveInspect?.({
-            filename: 'mod.jar',
-            size: 8192,
-            sha256: '9'.repeat(64)
-        });
-
         await waitFor(() => {
-            expect(screen.queryByText('Inspecting file...')).toBeNull();
             expect((screen.getByLabelText(/^Path/i) as HTMLInputElement).value).toBe('mod.jar');
             expect((screen.getByLabelText(/Logical Path/i) as HTMLInputElement).value).toBe('mod.jar');
-            expect((screen.getByLabelText(/Size \(bytes\)/i) as HTMLInputElement).value).toBe('8192');
-            expect((screen.getByLabelText(/^SHA-256/i) as HTMLInputElement).value).toBe('9'.repeat(64));
+            expect(screen.getByTestId('asset-plan-summary')).toBeDefined();
+            expect(screen.getByTestId('plan-final-sha256')).toBeDefined();
         });
     });
 
@@ -864,5 +843,109 @@ describe('Release Files & Readiness UI Functional Tests', () => {
         // Verify filename was NOT sent in the payload
         const updateCallPayload = updateSpy.mock.calls[0][2];
         expect('filename' in updateCallPayload).toBe(false);
+    });
+
+    test('23. File Inspector card does not have hardcoded white or light inline backgrounds and displays support guidance', async () => {
+        vi.spyOn(ReleasesApi, 'getRelease').mockResolvedValue(mockDraftRelease);
+        vi.spyOn(ReleaseFilesApi, 'listReleaseFiles').mockResolvedValue({ value: [], Count: 0 });
+        vi.spyOn(ReleasesApi, 'validateRelease').mockResolvedValue({ valid: true, issues: [] });
+
+        render(
+            <MemoryRouter initialEntries={['/releases/rel-draft-1']}>
+                <Routes>
+                    <Route path="/releases/:id" element={<ReleaseDetailPage />} />
+                </Routes>
+            </MemoryRouter>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByTestId('file-inspector-card')).toBeDefined();
+        });
+
+        const inspectorCard = screen.getByTestId('file-inspector-card');
+        const fileInput = screen.getByLabelText(/Inspect local file/i) as HTMLInputElement;
+
+        expect(inspectorCard.className).toContain('file-inspector-card');
+        expect(inspectorCard.style.backgroundColor).not.toBe('rgb(248, 250, 252)');
+        expect(inspectorCard.style.backgroundColor).not.toBe('#f8fafc');
+        expect(inspectorCard.style.backgroundColor).not.toBe('rgb(255, 255, 255)');
+        expect(inspectorCard.style.backgroundColor).not.toBe('#ffffff');
+
+        expect(fileInput.style.backgroundColor).not.toBe('rgb(248, 250, 252)');
+        expect(fileInput.style.backgroundColor).not.toBe('#f8fafc');
+        expect(fileInput.style.backgroundColor).not.toBe('rgb(255, 255, 255)');
+        expect(fileInput.style.backgroundColor).not.toBe('#ffffff');
+
+        // Check visible guidance text
+        expect(screen.getByText('Supports .jar, .zip and other release assets.')).toBeDefined();
+
+        // Check selector has no restrictive accept attribute
+        expect(fileInput.getAttribute('accept')).toBeNull();
+    });
+
+    test('24. file selector accepts a .jar file and executes local inspection', async () => {
+        const user = userEvent.setup();
+        vi.spyOn(ReleasesApi, 'getRelease').mockResolvedValue(mockDraftRelease);
+        vi.spyOn(ReleaseFilesApi, 'listReleaseFiles').mockResolvedValue({ value: [], Count: 0 });
+        vi.spyOn(ReleasesApi, 'validateRelease').mockResolvedValue({ valid: true, issues: [] });
+
+        render(
+            <MemoryRouter initialEntries={['/releases/rel-draft-1']}>
+                <Routes>
+                    <Route path="/releases/:id" element={<ReleaseDetailPage />} />
+                </Routes>
+            </MemoryRouter>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByLabelText(/Inspect local file/i)).toBeDefined();
+        });
+
+        const fileInput = screen.getByLabelText(/Inspect local file/i) as HTMLInputElement;
+        // 10 bytes: '1234567890' -> SHA-256: c775e7b757ede630cd0aa1113bd102661ab38829ca52a6422ab782862f268646
+        const jarFile = new File(['1234567890'], 'fabric-api-0.92.0.jar', {
+            type: 'application/java-archive'
+        });
+
+        await user.upload(fileInput, jarFile);
+
+        await waitFor(() => {
+            expect((screen.getByLabelText(/^Path/i) as HTMLInputElement).value).toBe('fabric-api-0.92.0.jar');
+            expect((screen.getByLabelText(/Logical Path/i) as HTMLInputElement).value).toBe('fabric-api-0.92.0.jar');
+            expect(screen.getByTestId('plan-final-sha256').textContent).toBe('c775e7b757ede630cd0aa1113bd102661ab38829ca52a6422ab782862f268646');
+        });
+    });
+
+    test('25. file selector accepts a .zip file and executes local inspection', async () => {
+        const user = userEvent.setup();
+        vi.spyOn(ReleasesApi, 'getRelease').mockResolvedValue(mockDraftRelease);
+        vi.spyOn(ReleaseFilesApi, 'listReleaseFiles').mockResolvedValue({ value: [], Count: 0 });
+        vi.spyOn(ReleasesApi, 'validateRelease').mockResolvedValue({ valid: true, issues: [] });
+
+        render(
+            <MemoryRouter initialEntries={['/releases/rel-draft-1']}>
+                <Routes>
+                    <Route path="/releases/:id" element={<ReleaseDetailPage />} />
+                </Routes>
+            </MemoryRouter>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByLabelText(/Inspect local file/i)).toBeDefined();
+        });
+
+        const fileInput = screen.getByLabelText(/Inspect local file/i) as HTMLInputElement;
+        // 5 bytes: 'abcde' -> SHA-256: 36bbe50ed96841d10443bcb670d6554f0a34b761be67ec9c4a8ad2c0c44ca42c
+        const zipFile = new File(['abcde'], 'client-bundle-v1.zip', {
+            type: 'application/zip'
+        });
+
+        await user.upload(fileInput, zipFile);
+
+        await waitFor(() => {
+            expect((screen.getByLabelText(/^Path/i) as HTMLInputElement).value).toBe('client-bundle-v1.zip');
+            expect((screen.getByLabelText(/Logical Path/i) as HTMLInputElement).value).toBe('client-bundle-v1.zip');
+            expect(screen.getByTestId('plan-final-sha256').textContent).toBe('36bbe50ed96841d10443bcb670d6554f0a34b761be67ec9c4a8ad2c0c44ca42c');
+        });
     });
 });

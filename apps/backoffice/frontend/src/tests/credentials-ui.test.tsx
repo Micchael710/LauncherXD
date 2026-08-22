@@ -154,4 +154,34 @@ describe('LocalCredentialsSection Component', () => {
 
         expect(screen.queryByLabelText('Admin API Token:')).toBeNull();
     });
+
+    test('7. credentials cards do not contain hardcoded white or light inline background styles', async () => {
+        vi.spyOn(CredentialsApi, 'getStatus').mockResolvedValue({
+            admin: { configured: true },
+            github: { configured: false }
+        });
+
+        render(<LocalCredentialsSection />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('credential-card-admin')).toBeDefined();
+        });
+
+        const adminCard = screen.getByTestId('credential-card-admin');
+        const githubCard = screen.getByTestId('credential-card-github');
+
+        expect(adminCard.className).toContain('credential-card');
+        expect(githubCard.className).toContain('credential-card');
+
+        // Verify neither card has hardcoded inline white/light background styles
+        expect(adminCard.style.backgroundColor).not.toBe('rgb(248, 250, 252)');
+        expect(adminCard.style.backgroundColor).not.toBe('#f8fafc');
+        expect(adminCard.style.backgroundColor).not.toBe('rgb(255, 255, 255)');
+        expect(adminCard.style.backgroundColor).not.toBe('#ffffff');
+
+        expect(githubCard.style.backgroundColor).not.toBe('rgb(248, 250, 252)');
+        expect(githubCard.style.backgroundColor).not.toBe('#f8fafc');
+        expect(githubCard.style.backgroundColor).not.toBe('rgb(255, 255, 255)');
+        expect(githubCard.style.backgroundColor).not.toBe('#ffffff');
+    });
 });

@@ -3,6 +3,7 @@ export interface NewsItem {
     title: string;
     summary?: string | null;
     image_url?: string | null;
+    video_url?: string | null;
     target_url?: string | null;
     published: boolean;
     published_at?: string | null;
@@ -15,6 +16,7 @@ export interface RawNewsItem {
     title: string;
     summary?: string | null;
     image_url?: string | null;
+    video_url?: string | null;
     target_url?: string | null;
     published: boolean | 0 | 1;
     published_at?: string | null;
@@ -25,7 +27,8 @@ export interface RawNewsItem {
 export interface CreateNewsInput {
     title: string;
     summary?: string;
-    image_url?: string;
+    image_url?: string | null;
+    video_url?: string | null;
     target_url?: string;
     published?: boolean;
 }
@@ -43,7 +46,8 @@ export interface ListNewsResponse {
 export interface UpdateNewsInput {
     title?: string;
     summary?: string;
-    image_url?: string;
+    image_url?: string | null;
+    video_url?: string | null;
     target_url?: string;
     published?: boolean;
 }

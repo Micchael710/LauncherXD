@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { Bindings, CreateNewsInput, UpdateNewsInput } from '../../types';
 import { NewsRepository } from '../../repositories/news-repository';
-import { isValidNewsUrl } from '../../utils/validation';
+import { isValidNewsUrl, isValidNewsVideoUrl } from '../../utils/validation';
 import { AdminAuditLogger } from '../../services/admin-audit-logger';
 import { AdminIdentity } from '../../auth/admin-auth-provider';
 
@@ -29,8 +29,19 @@ newsApp.post('/', async (c) => {
     return c.json({ error: 'validation_error', details: ['summary_too_long'] }, 400);
   }
 
+  const hasImage = Boolean(body.image_url && body.image_url.trim());
+  const hasVideo = Boolean(body.video_url && body.video_url.trim());
+
+  if (hasImage && hasVideo) {
+    return c.json({ error: 'validation_error', details: ['cannot_have_both_image_and_video'] }, 400);
+  }
+
   if (body.image_url && !isValidNewsUrl(body.image_url)) {
     return c.json({ error: 'validation_error', details: ['invalid_image_url'] }, 400);
+  }
+
+  if (body.video_url && !isValidNewsVideoUrl(body.video_url)) {
+    return c.json({ error: 'validation_error', details: ['invalid_video_url'] }, 400);
   }
 
   if (body.target_url && !isValidNewsUrl(body.target_url)) {
@@ -44,7 +55,8 @@ newsApp.post('/', async (c) => {
     id,
     title: body.title,
     summary: body.summary,
-    image_url: body.image_url,
+    image_url: body.image_url || undefined,
+    video_url: body.video_url || null,
     target_url: body.target_url,
     published: body.published === true,
     published_at: body.published ? new Date().toISOString() : undefined,
@@ -86,7 +98,22 @@ newsApp.patch('/:id', async (c) => {
 
   if (body.image_url !== undefined) {
     if (body.image_url && !isValidNewsUrl(body.image_url)) return c.json({ error: 'validation_error', details: ['invalid_image_url'] }, 400);
-    updates.image_url = body.image_url;
+    updates.image_url = body.image_url ? body.image_url : null;
+  }
+
+  if (body.video_url !== undefined) {
+    if (body.video_url && !isValidNewsVideoUrl(body.video_url)) return c.json({ error: 'validation_error', details: ['invalid_video_url'] }, 400);
+    updates.video_url = body.video_url ? body.video_url : null;
+  }
+
+  const effectiveImageUrl = updates.image_url !== undefined ? updates.image_url : existing.image_url;
+  const effectiveVideoUrl = updates.video_url !== undefined ? updates.video_url : existing.video_url;
+
+  const hasEffectiveImage = Boolean(effectiveImageUrl && effectiveImageUrl.trim());
+  const hasEffectiveVideo = Boolean(effectiveVideoUrl && effectiveVideoUrl.trim());
+
+  if (hasEffectiveImage && hasEffectiveVideo) {
+    return c.json({ error: 'validation_error', details: ['cannot_have_both_image_and_video'] }, 400);
   }
 
   if (body.target_url !== undefined) {

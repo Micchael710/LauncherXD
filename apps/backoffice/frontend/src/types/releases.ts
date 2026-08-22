@@ -52,3 +52,25 @@ export interface GitHubReleaseStatusResponse {
 export interface PublishReleaseResponse {
     status: string;
 }
+
+export type DeletionStepStatus = 'deleted' | 'not_present' | 'failed' | 'pending';
+export type D1DeletionStepStatus = 'deleted' | 'failed' | 'pending';
+export type GitHubResolutionType = 'metadata' | 'canonical_tag_lookup' | 'not_present';
+
+export interface DeletionSteps {
+    github_release: DeletionStepStatus;
+    github_tag: DeletionStepStatus;
+    d1: D1DeletionStepStatus;
+}
+
+export interface DeleteEverywhereResponse {
+    status?: string;
+    deleted: boolean;
+    purged?: boolean;
+    release_id: string;
+    github_release_deleted: boolean;
+    github_tag_deleted: boolean;
+    d1_deleted: boolean;
+    deletion_steps?: DeletionSteps;
+    github_resolution?: GitHubResolutionType;
+}

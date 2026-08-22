@@ -28,6 +28,9 @@ export const NewsApi = {
         if (input.image_url !== undefined) {
             payload.image_url = input.image_url;
         }
+        if (input.video_url !== undefined) {
+            payload.video_url = input.video_url;
+        }
         if (input.target_url !== undefined) {
             payload.target_url = input.target_url;
         }
@@ -54,6 +57,9 @@ export const NewsApi = {
         }
         if (input.image_url !== undefined) {
             payload.image_url = input.image_url;
+        }
+        if (input.video_url !== undefined) {
+            payload.video_url = input.video_url;
         }
         if (input.target_url !== undefined) {
             payload.target_url = input.target_url;

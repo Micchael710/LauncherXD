@@ -54,6 +54,11 @@ describe('Settings UI Functional Tests', () => {
 
         expect(screen.getByTestId('settings-loading')).toBeDefined();
         expect(screen.getByText('Loading settings...')).toBeDefined();
+
+        // Wait for credentials status fetch to settle cleanly without background act() warning
+        await waitFor(() => {
+            expect(screen.getByTestId('credential-card-admin')).toBeDefined();
+        });
     });
 
     test('2. Displays empty state when settings list is empty', async () => {

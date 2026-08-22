@@ -115,7 +115,7 @@ export const LocalCredentialsSection: React.FC = () => {
                 <div className="card-header">
                     <div>
                         <h2 id="local-credentials-heading" className="card-title">Local Credentials</h2>
-                        <p style={{ margin: '0.25rem 0 0 0', color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
+                        <p style={{ margin: '0.25rem 0 0 0', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
                             Secure credential storage bound to your Windows user account. Survives restarts without environment variables.
                         </p>
                     </div>
@@ -134,15 +134,15 @@ export const LocalCredentialsSection: React.FC = () => {
                 )}
 
                 {isLoading ? (
-                    <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                    <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
                         Loading credential status...
                     </div>
                 ) : (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', padding: '1.5rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem', padding: '1.5rem' }}>
                         {/* Admin API Card */}
-                        <div className="card" style={{ backgroundColor: '#f8fafc', padding: '1.25rem', border: '1px solid var(--color-border)' }}>
+                        <div className="credential-card" data-testid="credential-card-admin">
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                                <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Admin API</h3>
+                                <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-primary)' }}>Admin API</h3>
                                 <span
                                     className={status?.admin.configured ? 'badge badge-ready' : 'badge badge-draft'}
                                     aria-label={`Admin API ${status?.admin.configured ? 'Configured' : 'Not configured'}`}
@@ -151,7 +151,7 @@ export const LocalCredentialsSection: React.FC = () => {
                                 </span>
                             </div>
 
-                            <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '1rem' }}>
+                            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
                                 Used for authenticating local backend calls to Cloudflare Worker admin endpoints.
                             </p>
 
@@ -222,9 +222,9 @@ export const LocalCredentialsSection: React.FC = () => {
                         </div>
 
                         {/* GitHub Releases Card */}
-                        <div className="card" style={{ backgroundColor: '#f8fafc', padding: '1.25rem', border: '1px solid var(--color-border)' }}>
+                        <div className="credential-card" data-testid="credential-card-github">
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                                <h3 style={{ margin: 0, fontSize: '1.1rem' }}>GitHub Releases</h3>
+                                <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-primary)' }}>GitHub Releases</h3>
                                 <span
                                     className={status?.github.configured ? 'badge badge-ready' : 'badge badge-draft'}
                                     aria-label={`GitHub Releases ${status?.github.configured ? 'Configured' : 'Not configured'}`}
@@ -233,7 +233,7 @@ export const LocalCredentialsSection: React.FC = () => {
                                 </span>
                             </div>
 
-                            <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '1rem' }}>
+                            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
                                 Used for uploading binary release assets to GitHub repository.
                             </p>
 
