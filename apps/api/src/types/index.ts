@@ -46,6 +46,7 @@ export type News = {
   title: string;
   summary?: string;
   image_url?: string;
+  video_url?: string | null;
   target_url?: string;
   published: boolean;
   published_at?: string;
@@ -103,6 +104,7 @@ export type CreateNewsInput = {
   title: string;
   summary?: string;
   image_url?: string;
+  video_url?: string | null;
   target_url?: string;
   published?: boolean;
 };
@@ -111,6 +113,7 @@ export type UpdateNewsInput = {
   title?: string;
   summary?: string;
   image_url?: string;
+  video_url?: string | null;
   target_url?: string;
   published?: boolean;
 };
@@ -119,4 +122,22 @@ export type UpdateSettingInput = {
   value: string;
   value_type: string;
   is_public?: boolean;
+};
+
+export type PurgeReleaseInput = {
+  confirm_version: string;
+  confirm_phrase: string;
+};
+
+export type PurgeReleaseResponse = {
+  status: 'ok';
+  purged: boolean;
+};
+
+export type PurgeCapabilityResponse = {
+  available: true;
+  release_id: string;
+  release_type: 'modpack';
+  status: 'draft' | 'published' | 'deprecated';
+  version: string;
 };

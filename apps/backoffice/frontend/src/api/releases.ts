@@ -5,7 +5,8 @@ import type {
     Release,
     GitHubReleasePrepareResponse,
     GitHubReleaseStatusResponse,
-    PublishReleaseResponse
+    PublishReleaseResponse,
+    DeleteEverywhereResponse
 } from '../types/releases';
 import type { ReleaseValidationResponse } from '../types/validation';
 
@@ -50,6 +51,13 @@ export const ReleasesApi = {
         return LocalApiClient.fetch(`/api/admin/releases/${id}/publish`, {
             method: 'POST',
             body: JSON.stringify({ confirm_version: confirmVersion }),
+            headers: { 'Content-Type': 'application/json' }
+        });
+    },
+    async deleteModpackEverywhere(id: string, confirmVersion: string, confirmPhrase: string = `DELETE ${confirmVersion}`): Promise<DeleteEverywhereResponse> {
+        return LocalApiClient.fetch(`/api/local/releases/${id}/delete-everywhere`, {
+            method: 'DELETE',
+            body: JSON.stringify({ confirm_version: confirmVersion, confirm_phrase: confirmPhrase }),
             headers: { 'Content-Type': 'application/json' }
         });
     }

@@ -58,8 +58,9 @@ export class ReleaseRepository {
         release.status, release.total_size ?? null, release.release_notes ?? null,
         release.created_at, release.updated_at
       ).run();
-    } catch (err: any) {
-      if (err.message?.includes('D1_ERROR') && err.message?.includes('UNIQUE constraint failed')) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('UNIQUE constraint failed') || msg === 'conflict') {
         throw new Error('conflict');
       }
       throw err;
@@ -68,7 +69,7 @@ export class ReleaseRepository {
 
   async updateRelease(id: string, updates: Partial<Release>): Promise<void> {
     const setClauses: string[] = [];
-    const values: any[] = [];
+    const values: (string | number | boolean | null | undefined)[] = [];
 
     for (const [key, value] of Object.entries(updates)) {
       setClauses.push(`${key} = ?`);
@@ -83,8 +84,9 @@ export class ReleaseRepository {
     const query = `UPDATE releases SET ${setClauses.join(', ')} WHERE id = ?`;
     try {
       await this.db.prepare(query).bind(...values).run();
-    } catch (err: any) {
-      if (err.message?.includes('D1_ERROR') && err.message?.includes('UNIQUE constraint failed')) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('UNIQUE constraint failed') || msg === 'conflict') {
         throw new Error('conflict');
       }
       throw err;
@@ -93,6 +95,10 @@ export class ReleaseRepository {
 
   async deleteRelease(id: string): Promise<void> {
     await this.db.prepare(`DELETE FROM releases WHERE id = ? AND status = 'draft'`).bind(id).run();
+  }
+
+  async purgeRelease(id: string): Promise<void> {
+    await this.db.prepare(`DELETE FROM releases WHERE id = ?`).bind(id).run();
   }
 
   async addReleaseFile(file: ReleaseFile): Promise<void> {
@@ -107,17 +113,18 @@ export class ReleaseRepository {
         file.part_index ?? null, file.part_count ?? null, file.final_sha256 ?? null,
         file.created_at
       ).run();
-    } catch (err: any) {
-      if (err.message?.includes('D1_ERROR') && err.message?.includes('UNIQUE constraint failed')) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('UNIQUE constraint failed') || msg === 'conflict') {
         throw new Error('conflict');
       }
       throw err;
     }
   }
 
-  async updateReleaseFile(fileId: string, releaseId: string, updates: Partial<ReleaseFile>): Promise<void> {
+  async updateReleaseFile(releaseId: string, fileId: string, updates: Partial<ReleaseFile>): Promise<void> {
     const setClauses: string[] = [];
-    const values: any[] = [];
+    const values: (string | number | boolean | null | undefined)[] = [];
 
     for (const [key, value] of Object.entries(updates)) {
       setClauses.push(`${key} = ?`);
@@ -126,13 +133,15 @@ export class ReleaseRepository {
 
     if (setClauses.length === 0) return;
 
-    values.push(fileId, releaseId); // For the WHERE clause
+    values.push(fileId);
+    values.push(releaseId);
 
     const query = `UPDATE release_files SET ${setClauses.join(', ')} WHERE id = ? AND release_id = ?`;
     try {
       await this.db.prepare(query).bind(...values).run();
-    } catch (err: any) {
-      if (err.message?.includes('D1_ERROR') && err.message?.includes('UNIQUE constraint failed')) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('UNIQUE constraint failed') || msg === 'conflict') {
         throw new Error('conflict');
       }
       throw err;

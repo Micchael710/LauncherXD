@@ -10,19 +10,44 @@ export interface ApiErrorResponse {
     error?: string;
     details?: ApiErrorDetail[];
     message?: string;
+    deletion_steps?: {
+        github_release: 'deleted' | 'not_present' | 'failed' | 'pending';
+        github_tag: 'deleted' | 'not_present' | 'failed' | 'pending';
+        d1: 'deleted' | 'failed' | 'pending';
+    };
+    github_resolution?: 'metadata' | 'canonical_tag_lookup' | 'not_present';
 }
 
 export class ApiClientError extends Error {
     readonly status: number;
     readonly error: string;
     readonly details: ApiErrorDetail[];
+    readonly deletion_steps?: {
+        github_release: 'deleted' | 'not_present' | 'failed' | 'pending';
+        github_tag: 'deleted' | 'not_present' | 'failed' | 'pending';
+        d1: 'deleted' | 'failed' | 'pending';
+    };
+    readonly github_resolution?: 'metadata' | 'canonical_tag_lookup' | 'not_present';
 
-    constructor(status: number, error: string, details: ApiErrorDetail[] = [], message?: string) {
+    constructor(
+        status: number,
+        error: string,
+        details: ApiErrorDetail[] = [],
+        message?: string,
+        deletion_steps?: {
+            github_release: 'deleted' | 'not_present' | 'failed' | 'pending';
+            github_tag: 'deleted' | 'not_present' | 'failed' | 'pending';
+            d1: 'deleted' | 'failed' | 'pending';
+        },
+        github_resolution?: 'metadata' | 'canonical_tag_lookup' | 'not_present'
+    ) {
         super(message || error);
         this.name = 'ApiClientError';
         this.status = status;
         this.error = error;
         this.details = details;
+        this.deletion_steps = deletion_steps;
+        this.github_resolution = github_resolution;
     }
 }
 
@@ -218,6 +243,12 @@ export function formatApiErrorMessage(err: unknown, context?: 'release' | 'news'
             }
             return 'Validation error in request.';
         }
+        if (err.error === 'PURGE_ENDPOINT_UNAVAILABLE') {
+            return 'The updated Worker purge endpoint is not available. No resources were deleted. Apply the migration and deploy apps/api before retrying.';
+        }
+        if (err.error === 'PARTIAL_DELETION_ERROR') {
+            return err.message || 'Partial deletion error occurred.';
+        }
         if (err.message) {
             return err.message;
         }
@@ -237,7 +268,7 @@ export class LocalApiClient {
             const errorCode = data.error || (res.status === 404 ? 'not_found' : 'API_ERROR');
             const details = Array.isArray(data.details) ? data.details : [];
             const message = data.message;
-            throw new ApiClientError(res.status, errorCode, details, message);
+            throw new ApiClientError(res.status, errorCode, details, message, data.deletion_steps, data.github_resolution);
         }
         return res.json() as Promise<T>;
     }

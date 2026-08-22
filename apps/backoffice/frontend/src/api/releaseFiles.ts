@@ -35,7 +35,7 @@ export const ReleaseFilesApi = {
     async uploadPhysicalAsset(
         releaseId: string,
         fileId: string,
-        file: File,
+        file: File | Blob,
         onProgress?: (progress: UploadProgress) => void
     ): Promise<UploadAssetResponse> {
         return new Promise((resolve, reject) => {
@@ -77,7 +77,8 @@ export const ReleaseFilesApi = {
             };
 
             const formData = new FormData();
-            formData.append('file', file, file.name);
+            const fileName = file instanceof File ? file.name : 'asset.bin';
+            formData.append('file', file, fileName);
             xhr.send(formData);
         });
     }

@@ -366,5 +366,278 @@ export function createApp(options: AppOptions = {}) {
         }
     });
 
+    // Safe Modpack Draft Deletion Endpoint (Everywhere: GitHub Release + Git Tag + D1 + ReleaseFiles Cascade)
+    app.delete('/api/local/releases/:releaseId/delete-everywhere', async (c) => {
+        const releaseId = c.req.param('releaseId');
+
+        let body: { confirm_version?: string; confirm_phrase?: string };
+        try {
+            body = await c.req.json();
+        } catch {
+            return c.json({ error: 'validation_error', details: ['invalid_json'] }, 400);
+        }
+
+        if (!body || typeof body.confirm_version !== 'string' || body.confirm_version.trim().length === 0) {
+            return c.json({ error: 'validation_error', details: ['missing_confirm_version'] }, 400);
+        }
+        if (typeof body.confirm_phrase !== 'string' || body.confirm_phrase.trim().length === 0) {
+            return c.json({ error: 'validation_error', details: ['missing_confirm_phrase'] }, 400);
+        }
+
+        const confirmVersion = body.confirm_version.trim();
+        const confirmPhrase = body.confirm_phrase.trim();
+
+        // 1. Fetch real release from Worker
+        let release: {
+            id: string;
+            version: string;
+            channel: string;
+            release_type: string;
+            status: string;
+            github_tag?: string | null;
+            github_release_id?: number | string | null;
+        };
+        try {
+            const res = await worker.fetch(`/api/admin/releases/${releaseId}`);
+            if (res.status === 404) {
+                return c.json({ error: 'not_found' }, 404);
+            }
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                return c.json(errData, res.status as 400 | 401 | 403 | 409 | 500);
+            }
+            release = (await res.json()) as typeof release;
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg === 'ADMIN_UNAUTHORIZED') return c.json({ error: 'ADMIN_UNAUTHORIZED' }, 401);
+            if (msg === 'ADMIN_AUTH_NOT_CONFIGURED') return c.json({ error: 'ADMIN_AUTH_NOT_CONFIGURED' }, 401);
+            return c.json({ error: 'Internal error' }, 500);
+        }
+
+        // 2. Validate release is modpack
+        if (release.release_type !== 'modpack') {
+            return c.json({ error: 'invalid_release_type', message: 'Only modpack releases can be deleted via this endpoint' }, 400);
+        }
+
+        // 3. Validate release status is draft, published, or deprecated
+        if (!['draft', 'published', 'deprecated'].includes(release.status)) {
+            return c.json({ error: 'invalid_release_status', message: `Cannot purge release in "${release.status}" status` }, 400);
+        }
+
+        // 4. Check version and phrase confirmations
+        if (confirmVersion !== release.version) {
+            return c.json({
+                error: 'validation_error',
+                details: ['invalid_confirm_version'],
+                message: `Confirmation version does not match "${release.version}"`
+            }, 400);
+        }
+
+        if (confirmPhrase !== `DELETE ${release.version}`) {
+            return c.json({
+                error: 'validation_error',
+                details: ['invalid_confirm_phrase'],
+                message: `Confirmation phrase does not match "DELETE ${release.version}"`
+            }, 400);
+        }
+
+        // 5. Preflight capability check on Worker API before any destructive action
+        try {
+            const capRes = await worker.fetch(`/api/admin/releases/${releaseId}/purge-capability`);
+            if (capRes.status === 404 || !capRes.ok) {
+                return c.json({
+                    error: 'PURGE_ENDPOINT_UNAVAILABLE',
+                    message: 'The purge endpoint is unavailable or the updated Worker API has not been deployed. No resources were deleted.',
+                    deletion_steps: {
+                        github_release: 'pending',
+                        github_tag: 'pending',
+                        d1: 'pending'
+                    },
+                    github_resolution: 'not_present'
+                }, 503);
+            }
+
+            interface PurgeCapabilityResult {
+                available?: boolean;
+                release_id?: string;
+                release_type?: string;
+                version?: string;
+                status?: string;
+            }
+
+            let capData: PurgeCapabilityResult | null = null;
+            try {
+                capData = (await capRes.json()) as PurgeCapabilityResult;
+            } catch {
+                capData = null;
+            }
+
+            if (
+                !capData ||
+                capData.available !== true ||
+                capData.release_id !== releaseId ||
+                capData.release_type !== 'modpack' ||
+                capData.version !== release.version ||
+                capData.status !== release.status
+            ) {
+                return c.json({
+                    error: 'PURGE_ENDPOINT_UNAVAILABLE',
+                    message: 'The purge endpoint is unavailable or returned incompatible capability metadata. No resources were deleted.',
+                    deletion_steps: {
+                        github_release: 'pending',
+                        github_tag: 'pending',
+                        d1: 'pending'
+                    },
+                    github_resolution: 'not_present'
+                }, 503);
+            }
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg === 'ADMIN_UNAUTHORIZED') return c.json({ error: 'ADMIN_UNAUTHORIZED' }, 401);
+            if (msg === 'ADMIN_AUTH_NOT_CONFIGURED') return c.json({ error: 'ADMIN_AUTH_NOT_CONFIGURED' }, 401);
+            return c.json({
+                error: 'PURGE_ENDPOINT_UNAVAILABLE',
+                message: 'The purge endpoint is unavailable or the updated Worker API has not been deployed. No resources were deleted.',
+                deletion_steps: {
+                    github_release: 'pending',
+                    github_tag: 'pending',
+                    d1: 'pending'
+                },
+                github_resolution: 'not_present'
+            }, 503);
+        }
+
+        // 6. Resolve GitHub Release and Tag
+        const canonicalTag = `${release.release_type}-${release.channel}-v${release.version}`;
+        const tagToDelete = release.github_tag || canonicalTag;
+
+        let targetReleaseId: string | number | null = null;
+        let resolution: 'metadata' | 'canonical_tag_lookup' | 'not_present' = 'not_present';
+
+        if (release.github_release_id) {
+            targetReleaseId = release.github_release_id;
+            resolution = 'metadata';
+        } else {
+            try {
+                const foundRelease = await github.getReleaseByTag(canonicalTag);
+                if (foundRelease) {
+                    targetReleaseId = foundRelease.id;
+                    resolution = 'canonical_tag_lookup';
+                } else {
+                    resolution = 'not_present';
+                }
+            } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : String(err);
+                if (msg === 'GITHUB_AUTH_NOT_CONFIGURED') {
+                    return c.json({ error: 'GITHUB_AUTH_NOT_CONFIGURED', message: 'GitHub credentials required to check GitHub release' }, 401);
+                }
+                if (msg === 'GITHUB_UNAUTHORIZED') {
+                    return c.json({ error: 'GITHUB_UNAUTHORIZED', message: 'GitHub authentication failed' }, 401);
+                }
+                if (msg === 'GITHUB_FORBIDDEN') {
+                    return c.json({ error: 'GITHUB_FORBIDDEN', message: 'GitHub access forbidden' }, 403);
+                }
+                return c.json({ error: 'GITHUB_ERROR', message: msg || 'Failed to inspect GitHub release' }, 502);
+            }
+        }
+
+        const steps: {
+            github_release: 'deleted' | 'not_present' | 'failed' | 'pending';
+            github_tag: 'deleted' | 'not_present' | 'failed' | 'pending';
+            d1: 'deleted' | 'failed' | 'pending';
+        } = {
+            github_release: targetReleaseId ? 'pending' : 'not_present',
+            github_tag: 'pending',
+            d1: 'pending'
+        };
+
+        // 7. Delete GitHub Release if resolved
+        if (targetReleaseId) {
+            try {
+                const result = await github.deleteRelease(targetReleaseId);
+                steps.github_release = result;
+            } catch (err: unknown) {
+                steps.github_release = 'failed';
+                const msg = err instanceof Error ? err.message : String(err);
+                return c.json({
+                    error: 'PARTIAL_DELETION_ERROR',
+                    message: `Failed to delete GitHub release: ${msg}`,
+                    github_release_deleted: false,
+                    github_tag_deleted: false,
+                    d1_deleted: false,
+                    deletion_steps: steps,
+                    github_resolution: resolution
+                }, 502);
+            }
+        }
+
+        // 8. Delete Git Tag
+        try {
+            const tagResult = await github.deleteTagIfExists(tagToDelete);
+            steps.github_tag = tagResult;
+        } catch (err: unknown) {
+            steps.github_tag = 'failed';
+            const msg = err instanceof Error ? err.message : String(err);
+            return c.json({
+                error: 'PARTIAL_DELETION_ERROR',
+                message: `Failed to delete Git tag: ${msg}`,
+                github_release_deleted: steps.github_release === 'deleted',
+                github_tag_deleted: false,
+                d1_deleted: false,
+                deletion_steps: steps,
+                github_resolution: resolution
+            }, 502);
+        }
+
+        // 9. Purge D1 metadata via administrative Worker POST /api/admin/releases/:id/purge
+        try {
+            const delRes = await worker.fetch(`/api/admin/releases/${releaseId}/purge`, {
+                method: 'POST',
+                body: JSON.stringify({ confirm_version: confirmVersion, confirm_phrase: confirmPhrase }),
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            if (!delRes.ok) {
+                steps.d1 = 'failed';
+                const errData = await delRes.json().catch(() => ({}));
+                return c.json({
+                    error: 'PARTIAL_DELETION_ERROR',
+                    message: 'GitHub resources were processed, but failed to delete release metadata from D1',
+                    github_release_deleted: steps.github_release === 'deleted',
+                    github_tag_deleted: steps.github_tag === 'deleted',
+                    d1_deleted: false,
+                    deletion_steps: steps,
+                    github_resolution: resolution,
+                    details: errData
+                }, 500);
+            }
+
+            steps.d1 = 'deleted';
+            return c.json({
+                status: 'ok',
+                deleted: true,
+                purged: true,
+                release_id: releaseId,
+                github_release_deleted: steps.github_release === 'deleted',
+                github_tag_deleted: steps.github_tag === 'deleted',
+                d1_deleted: true,
+                deletion_steps: steps,
+                github_resolution: resolution
+            }, 200);
+        } catch (err: unknown) {
+            steps.d1 = 'failed';
+            const msg = err instanceof Error ? err.message : String(err);
+            return c.json({
+                error: 'PARTIAL_DELETION_ERROR',
+                message: `GitHub resources were processed, but network error prevented deleting release metadata from D1: ${msg}`,
+                github_release_deleted: steps.github_release === 'deleted',
+                github_tag_deleted: steps.github_tag === 'deleted',
+                d1_deleted: false,
+                deletion_steps: steps,
+                github_resolution: resolution
+            }, 500);
+        }
+    });
+
     return app;
 }

@@ -48,7 +48,7 @@ export const NewsTable: React.FC<NewsTableProps> = ({
                                 <th>Title</th>
                                 <th>Summary</th>
                                 <th>Status</th>
-                                <th>Image URL</th>
+                                <th>Media</th>
                                 <th>Target URL</th>
                                 <th>Published Date</th>
                                 <th>Created Date</th>
@@ -70,8 +70,12 @@ export const NewsTable: React.FC<NewsTableProps> = ({
                                             </span>
                                         </td>
                                         <td>
-                                            {item.image_url ? (
-                                                <a href={item.image_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm">
+                                            {item.video_url ? (
+                                                <a href={item.video_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm" data-testid="news-media-video-link">
+                                                    View Video
+                                                </a>
+                                            ) : item.image_url ? (
+                                                <a href={item.image_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm" data-testid="news-media-image-link">
                                                     View Image
                                                 </a>
                                             ) : '-'}
